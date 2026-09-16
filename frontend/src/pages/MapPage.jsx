@@ -80,6 +80,14 @@ export default function MapPage() {
       }
     ).addTo(map)
 
+    // Esri World Boundaries and Places (labels + roads)
+    L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+      {
+        maxZoom: 20,
+      }
+    ).addTo(map)
+
     // Fit to Coimbatore bounds on load
     map.fitBounds(CBE_BOUNDS, { padding: [20, 20] })
 

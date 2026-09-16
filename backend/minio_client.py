@@ -29,10 +29,23 @@ def upload_file(object_name: str, data: bytes, content_type: str = "application/
     return object_name
 
 
+def get_public_minio_client() -> Minio:
+    # Use localhost:9000 for generating presigned URLs meant for the browser
+    # so the Host header in the signature matches the browser's request.
+    endpoint = settings.MINIO_ENDPOINT.replace("minio:9000", "localhost:9000")
+    return Minio(
+        endpoint,
+        access_key=settings.MINIO_ACCESS_KEY,
+        secret_key=settings.MINIO_SECRET_KEY,
+        secure=settings.MINIO_SECURE,
+        region="us-east-1",  # Prevents client from making network calls to determine region
+    )
+
+
 def get_presigned_url(object_name: str, expires_seconds: int = 3600) -> str:
     """Generate a presigned GET URL valid for `expires_seconds`."""
     from datetime import timedelta
-    client = get_minio_client()
+    client = get_public_minio_client()
     url = client.presigned_get_object(
         settings.MINIO_BUCKET,
         object_name,

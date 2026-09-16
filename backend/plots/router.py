@@ -112,6 +112,31 @@ def get_plot(plot_id: UUID, db: Session = Depends(get_db)):
     return _plot_to_detail(plot)
 
 
+@router.post("/extract-kml")
+async def extract_kml(
+    kml_file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """Parse KML and return lat, lon, and calculated area in sqm."""
+    try:
+        contents = await kml_file.read()
+        parsed = extract_polygon_from_kml(contents)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # Calculate exact area in square meters using PostGIS geography casting
+    from sqlalchemy import text
+    query = text("SELECT ST_Area(ST_GeomFromText(:wkt, 4326)::geography)")
+    result = db.execute(query, {"wkt": parsed["wkt"]}).scalar()
+    
+    return {
+        "lat": parsed["centroid_lat"],
+        "lon": parsed["centroid_lon"],
+        "area_sqm": float(result) if result else 0.0
+    }
+
+
+
 @router.post("", response_model=PlotDetail, status_code=status.HTTP_201_CREATED)
 async def create_plot(
     district_id: UUID = Form(...),

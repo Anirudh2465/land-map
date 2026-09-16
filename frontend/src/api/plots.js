@@ -5,9 +5,18 @@ export async function getPlots(districtId) {
   return res.data
 }
 
-export async function getPlot(plotId) {
-  const res = await client.get(`/plots/${plotId}`)
-  return res.data
+export async function getPlot(id) {
+  const { data } = await client.get(`/plots/${id}`)
+  return data
+}
+
+export async function extractKml(file) {
+  const fd = new FormData()
+  fd.append('kml_file', file)
+  const { data } = await client.post('/plots/extract-kml', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+  return data
 }
 
 export async function createPlot(formData) {

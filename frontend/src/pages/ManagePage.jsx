@@ -9,7 +9,7 @@
  */
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getPlots, createPlot, deletePlot } from '../api/plots'
+import { getPlots, createPlot, deletePlot, extractKml } from '../api/plots'
 import { useAuth } from '../context/AuthContext'
 import Header from '../components/Header'
 
@@ -124,6 +124,30 @@ export default function ManagePage() {
       setFormError(err.response?.data?.detail || 'Failed to create parcel.')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const [autofilling, setAutofilling] = useState(false)
+  async function handleAutofill() {
+    if (!kmlFile) {
+      setFormError('Please select a KML file first.')
+      return
+    }
+    setAutofilling(true)
+    setFormError('')
+    try {
+      const data = await extractKml(kmlFile)
+      setForm(f => ({
+        ...f,
+        area_value: data.area_sqm.toFixed(2),
+        area_unit: 'sqm',
+        lat: data.lat.toFixed(6),
+        lon: data.lon.toFixed(6),
+      }))
+    } catch (err) {
+      setFormError(err.response?.data?.detail || 'Failed to extract KML details.')
+    } finally {
+      setAutofilling(false)
     }
   }
 
@@ -348,7 +372,17 @@ export default function ManagePage() {
                     onChange={setKmlFile}
                     fileName={kmlFile?.name}
                   />
-
+                  <div style={{ marginBottom: '1.5rem', marginTop: '-0.5rem', textAlign: 'right' }}>
+                    <button 
+                      type="button" 
+                      className="btn btn-outline btn-sm" 
+                      onClick={handleAutofill}
+                      disabled={!kmlFile || autofilling}
+                    >
+                      {autofilling ? 'Extracting...' : '🪄 Autofill Area, Latitude & Longitude from KML'}
+                    </button>
+                  </div>
+                  {/*
                   <div style={{
                     padding: '0.75rem 1rem',
                     background: '#fffbeb',
@@ -360,7 +394,7 @@ export default function ManagePage() {
                   }}>
                     📎 Upload supporting documents (optional)
                   </div>
-
+                  */}
                   <FileField
                     label="FMB Document"
                     name="fmb_file"
