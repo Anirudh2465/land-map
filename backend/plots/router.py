@@ -160,10 +160,11 @@ async def create_plot(
     if not node:
         raise HTTPException(status_code=404, detail="District not found")
 
-    # Check land_id uniqueness within district
+    # Check land_id uniqueness within district (only for ACTIVE plots)
     existing = db.query(Plot).filter(
         Plot.geo_node_id == district_id,
-        Plot.plot_number == land_id
+        Plot.plot_number == land_id,
+        Plot.status == "ACTIVE"
     ).first()
     if existing:
         raise HTTPException(

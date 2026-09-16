@@ -23,7 +23,7 @@ export default function HomePage() {
             Land Management System
           </h1>
           <p style={{ color: 'var(--color-text-muted)', fontSize: '1rem' }}>
-            Coimbatore District Land Parcel Registry
+            Land Parcel Registry (Testing Build)
           </p>
         </div>
 
