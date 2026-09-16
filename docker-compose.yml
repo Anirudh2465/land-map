@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   db:
@@ -13,6 +12,11 @@ services:
     volumes:
       - db_data:/var/lib/postgresql/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lpms_user -d lpms"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   redis:
     image: redis:7-alpine
@@ -21,5 +25,81 @@ services:
       - "6379:6379"
     restart: unless-stopped
 
+  minio:
+    image: minio/minio:latest
+    container_name: lpms_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: lpms_minio_user
+      MINIO_ROOT_PASSWORD: lpms_minio_password
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  createbuckets:
+    image: quay.io/minio/mc:latest
+    container_name: lpms_minio_init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 lpms_minio_user lpms_minio_password;
+      mc mb --ignore-existing local/lpms-documents;
+      echo 'Bucket ready.';
+      "
+    restart: "no"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lpms_backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://lpms_user:lpms_password@db:5432/lpms
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: lpms_minio_user
+      MINIO_SECRET_KEY: lpms_minio_password
+      MINIO_BUCKET: lpms-documents
+      MINIO_SECURE: "false"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: lpms_frontend
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+      VITE_API_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    restart: unless-stopped
+
 volumes:
   db_data:
+  minio_data:

@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Boolean, ForeignKey, Integer, Numeric, Date, text, JSON
+from sqlalchemy import Column, String, Boolean, Float, ForeignKey, Integer, Numeric, Date, text, JSON
 from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY, TIMESTAMP
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -39,13 +39,19 @@ class Plot(Base):
     geo_node_id = Column(UUID(as_uuid=True), ForeignKey("geo_nodes.id"), nullable=False, index=True)
     property_name = Column(String, nullable=True)
     survey_number = Column(String, nullable=True)
-    plot_number = Column(String, nullable=True)
+    plot_number = Column(String, nullable=True, index=True)  # used as LandID (e.g. CB1, CB2)
     area_value = Column(Numeric(12, 2), nullable=True)
     area_unit = Column(String, default="sqm")
     classification = Column(String, nullable=True)
-    boundary = Column(Geometry('POLYGON', srid=4326), nullable=False, index=True)
+    # MVP extra fields
+    landmark = Column(String, nullable=True)
+    lat = Column(Float, nullable=True)
+    lon = Column(Float, nullable=True)
+    location_name = Column(String, nullable=True)  # Nominatim reverse-geocoded address
+    # Geometry — nullable to handle KML parse failures gracefully
+    boundary = Column(Geometry('POLYGON', srid=4326), nullable=True, index=True)
     boundary_simplified = Column(Geometry('POLYGON', srid=4326), nullable=True)
-    centroid = Column(Geometry('POINT', srid=4326), server_default=text("ST_Centroid(boundary)"))
+    centroid = Column(Geometry('POINT', srid=4326), nullable=True)
     tile_cell = Column(String, index=True, nullable=True)
     source_file_type = Column(String, default="KML")
     source_file_key = Column(String, nullable=True)
