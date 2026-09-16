@@ -76,7 +76,8 @@ export default function MapPage() {
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       {
         attribution: 'Tiles © Esri',
-        maxZoom: 20,
+        maxNativeZoom: 18,
+        maxZoom: 19,
       }
     ).addTo(map)
 
@@ -84,7 +85,8 @@ export default function MapPage() {
     L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
       {
-        maxZoom: 20,
+        maxNativeZoom: 18,
+        maxZoom: 19,
       }
     ).addTo(map)
 
@@ -205,6 +207,7 @@ export default function MapPage() {
     mapInstanceRef.current.fitBounds(bounds, {
       paddingTopLeft: [20, 20],
       paddingBottomRight: [380, 20], // leave room for info panel on right
+      maxZoom: 18,
     })
 
     // Show basic info immediately, then fetch full detail (with documents)
