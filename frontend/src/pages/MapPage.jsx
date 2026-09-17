@@ -68,6 +68,7 @@ export default function MapPage() {
     const map = L.map(mapRef.current, {
       center: CBE_BOUNDS.getCenter(),
       zoom: 11,
+      maxZoom: 22,
       zoomControl: true,
     })
 
@@ -77,7 +78,7 @@ export default function MapPage() {
       {
         attribution: 'Tiles © Esri',
         maxNativeZoom: 18,
-        maxZoom: 19,
+        maxZoom: 22,
       }
     ).addTo(map)
 
@@ -86,7 +87,7 @@ export default function MapPage() {
       'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
       {
         maxNativeZoom: 18,
-        maxZoom: 19,
+        maxZoom: 22,
       }
     ).addTo(map)
 
@@ -131,6 +132,20 @@ export default function MapPage() {
         style: PARCEL_STYLE,
       }).addTo(map)
 
+      // Add popup
+      const areaText = plot.area_value ? `${Number(plot.area_value).toLocaleString()} ${plot.area_unit || 'sqm'}` : 'N/A'
+      const popupContent = `
+        <div style="font-family: inherit; margin: 0; min-width: 150px;">
+          <h4 style="margin: 0 0 4px 0; font-size: 14px; font-weight: 600;">${plot.plot_number || 'Parcel'}</h4>
+          <p style="margin: 0 0 4px 0; font-size: 12px; color: #475569;">${plot.property_name || 'Unnamed'}</p>
+          <p style="margin: 0; font-size: 12px; font-weight: 500;">Area: ${areaText}</p>
+        </div>
+      `
+      geoLayer.bindPopup(popupContent, {
+        autoPanPaddingBottomRight: [380, 20],
+        closeButton: true
+      })
+
       // Compute center for label
       const bounds = geoLayer.getBounds()
       const center = bounds.getCenter()
@@ -162,6 +177,7 @@ export default function MapPage() {
       })
       geoLayer.on('click', () => {
         handleSelectPlot(plot, geoLayer, bounds)
+        geoLayer.openPopup()
       })
 
       layersRef.current.push({ layer: geoLayer, labelMarker, plot })
@@ -207,7 +223,7 @@ export default function MapPage() {
     mapInstanceRef.current.fitBounds(bounds, {
       paddingTopLeft: [20, 20],
       paddingBottomRight: [380, 20], // leave room for info panel on right
-      maxZoom: 18,
+      maxZoom: 21,
     })
 
     // Show basic info immediately, then fetch full detail (with documents)

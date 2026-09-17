@@ -32,7 +32,7 @@ const TN_DISTRICTS = [
 const ACTIVE_STATES = new Set(['Tamil Nadu'])
 const ACTIVE_DISTRICTS = new Set(['Coimbatore'])
 
-function GridButton({ label, active, onClick, disabled }) {
+function GridButton({ label, active, onClick, disabled, count }) {
   return (
     <button
       onClick={active && !disabled ? onClick : undefined}
@@ -62,7 +62,14 @@ function GridButton({ label, active, onClick, disabled }) {
         e.currentTarget.style.background = active ? 'var(--color-surface)' : '#f8fafc'
       }}
     >
-      {label}
+      <span style={{ display: 'flex', alignItems: 'center' }}>
+        {label}
+        {active && count !== undefined && (
+          <span style={{ marginLeft: '8px', fontSize: '0.75rem', color: 'var(--color-text-muted)', background: '#e2e8f0', padding: '2px 6px', borderRadius: '10px', fontWeight: '600' }}>
+            {count} {count === 1 ? 'parcel' : 'parcels'}
+          </span>
+        )}
+      </span>
       {!active && <span className="coming-soon-tag">Coming Soon</span>}
     </button>
   )
@@ -72,14 +79,33 @@ export default function NavigatorPage() {
   const { mode } = useParams() // "view" | "manage"
   const navigate = useNavigate()
 
-  // Steps: 0=country, 1=state, 2=district
   const [step, setStep] = useState(0)
   const [indiaNode, setIndiaNode] = useState(null)
   const [tnNode, setTnNode] = useState(null)
   const [selectedCountry, setSelectedCountry] = useState(null)
 
+  const [countries, setCountries] = useState([])
+  const [states, setStates] = useState([])
+  const [districts, setDistricts] = useState([])
+
   const isView = mode === 'view'
   const modeLabel = isView ? 'View Land Parcels' : 'Update Records'
+
+  useEffect(() => {
+    getCountries().then(setCountries).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (indiaNode) {
+      getChildren(indiaNode.id).then(setStates).catch(() => {})
+    }
+  }, [indiaNode])
+
+  useEffect(() => {
+    if (tnNode) {
+      getChildren(tnNode.id).then(setDistricts).catch(() => {})
+    }
+  }, [tnNode])
 
   async function handleSelectIndia() {
     // Fetch India GeoNode
@@ -142,12 +168,19 @@ export default function NavigatorPage() {
             <h1 style={{ fontSize: '1.4rem', fontWeight: '600', marginBottom: '1.5rem' }}>
               Select Region
             </h1>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', maxWidth: '500px' }}>
-              <GridButton
-                label="🇮🇳  India"
-                active={true}
-                onClick={handleSelectIndia}
-              />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', maxWidth: '600px' }}>
+              {(() => {
+                const india = countries.find(c => c.name === 'India')
+                const count = india ? india.plot_count : 0
+                return (
+                  <GridButton
+                    label="🇮🇳  India"
+                    active={true}
+                    count={count}
+                    onClick={handleSelectIndia}
+                  />
+                )
+              })()}
               <GridButton
                 label="🌐  Overseas"
                 active={false}
@@ -167,14 +200,20 @@ export default function NavigatorPage() {
               gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
               gap: '0.75rem',
             }}>
-              {INDIA_STATES.map(state => (
-                <GridButton
-                  key={state}
-                  label={state}
-                  active={ACTIVE_STATES.has(state)}
-                  onClick={state === 'Tamil Nadu' ? handleSelectTamilNadu : undefined}
-                />
-              ))}
+              {INDIA_STATES.map(stateName => {
+                const backendNode = states.find(s => s.name === stateName)
+                const count = backendNode ? backendNode.plot_count : 0
+                const active = ACTIVE_STATES.has(stateName)
+                return (
+                  <GridButton
+                    key={stateName}
+                    label={stateName}
+                    active={active}
+                    count={count}
+                    onClick={active ? handleSelectTamilNadu : undefined}
+                  />
+                )
+              })}
             </div>
           </div>
         )}
@@ -190,14 +229,20 @@ export default function NavigatorPage() {
               gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
               gap: '0.75rem',
             }}>
-              {TN_DISTRICTS.map(district => (
-                <GridButton
-                  key={district}
-                  label={district}
-                  active={ACTIVE_DISTRICTS.has(district)}
-                  onClick={district === 'Coimbatore' ? handleSelectCoimbatore : undefined}
-                />
-              ))}
+              {TN_DISTRICTS.map(districtName => {
+                const backendNode = districts.find(d => d.name === districtName)
+                const count = backendNode ? backendNode.plot_count : 0
+                const active = ACTIVE_DISTRICTS.has(districtName)
+                return (
+                  <GridButton
+                    key={districtName}
+                    label={districtName}
+                    active={active}
+                    count={count}
+                    onClick={active ? handleSelectCoimbatore : undefined}
+                  />
+                )
+              })}
             </div>
           </div>
         )}
