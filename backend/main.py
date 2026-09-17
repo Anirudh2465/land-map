@@ -5,6 +5,7 @@ from auth import router as auth_router
 from geo import router as geo_router
 from plots import router as plots_router
 from documents import router as documents_router
+from ai import router as ai_router
 
 app = FastAPI(
     title="Land Portfolio Management System (LPMS) API",
@@ -29,6 +30,7 @@ app.include_router(auth_router.router)
 app.include_router(geo_router.router)
 app.include_router(plots_router.router)
 app.include_router(documents_router.router)
+app.include_router(ai_router.router)
 
 
 @app.get("/")
