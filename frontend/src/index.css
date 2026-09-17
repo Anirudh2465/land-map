@@ -926,6 +926,12 @@ input, select, textarea { font: inherit; }
   transition: all 0.25s ease;
 }
 
+.action-card-icon-wrapper img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
 .glass-action-card:hover .action-card-icon-wrapper {
   background: #e2e8f0;
   border-color: #cbd5e1;

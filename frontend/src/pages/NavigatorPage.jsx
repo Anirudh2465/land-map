@@ -215,7 +215,7 @@ export default function NavigatorPage() {
           <div className="map-selection-card">
             <div className="map-selection-header">
               <div className="map-selection-icon">
-                <img src="/india.webp" alt="India" />
+                <img src="/india.png" alt="India" />
               </div>
               <h2 className="map-selection-title">Select State</h2>
               <p className="map-selection-subtitle">India • Choose state to view district boundaries</p>

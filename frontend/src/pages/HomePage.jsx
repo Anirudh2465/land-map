@@ -131,7 +131,9 @@ export default function HomePage() {
               onClick={() => navigate('/map')}
             >
               <div className="action-card-header-row">
-                <div className="action-card-icon-wrapper">🗺️</div>
+                <div className="action-card-icon-wrapper">
+                  <img src="/view.svg" alt="View Map" />
+                </div>
               </div>
               <h2 className="action-card-title">
                 View Land Parcels
@@ -155,7 +157,9 @@ export default function HomePage() {
               onClick={() => navigate('/navigate/manage')}
             >
               <div className="action-card-header-row">
-                <div className="action-card-icon-wrapper">📋</div>
+                <div className="action-card-icon-wrapper">
+                  <img src="/records.svg" alt="Update Records" />
+                </div>
               </div>
               <h2 className="action-card-title">
                 Update Records
