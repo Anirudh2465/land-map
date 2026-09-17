@@ -203,6 +203,18 @@ export default function MapPage() {
     map.on('zoomend', updateLabels)
     updateLabels() // initial call
 
+    // Zoom map to fit all loaded parcels
+    const totalBounds = L.latLngBounds()
+    layersRef.current.forEach(({ layer }) => {
+      if (layer && layer.getBounds) {
+        totalBounds.extend(layer.getBounds())
+      }
+    })
+    
+    if (totalBounds.isValid()) {
+      map.fitBounds(totalBounds, { padding: [50, 50], maxZoom: 18 })
+    }
+
     return () => {
       map.off('zoomend', updateLabels)
     }
@@ -234,7 +246,7 @@ export default function MapPage() {
       if (mapInstanceRef.current) {
         mapInstanceRef.current.invalidateSize()
         // Use flyTo for a guaranteed center zoom, instead of fitBounds which can fail if bounds are too small
-        mapInstanceRef.current.flyTo(bounds.getCenter(), 20, {
+        mapInstanceRef.current.flyTo(bounds.getCenter(), 18, {
           animate: true,
           duration: 1.5
         })
@@ -314,7 +326,7 @@ export default function MapPage() {
 
       {/* Map + Panel */}
       <div style={{ flex: 1, display: 'flex', position: 'relative', overflow: 'hidden' }}>
-        
+
         {/* Left Sidebar: Plot List */}
         <div style={{
           width: '300px',
