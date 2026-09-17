@@ -3,61 +3,79 @@
 ## Repository Structure & File Descriptions
 ```text
 .
-│   ├── documents                        ← NEW: Documents module
+├── backend/                             # Python FastAPI Backend
+│   ├── alembic/                         # Database Migration Tools
+│   │   ├── versions/
+│   │   │   └── 0001_initial_schema.py   # Initial database migration script generating all PostGIS tables
+│   │   ├── env.py                       # Alembic environment setup, loads SQLAlchemy metadata
+│   │   └── script.py.mako               # Template for generating new Alembic migrations
+│   ├── auth/                            # Authentication Module
+│   │   ├── dependencies.py              # RBAC dependencies (require_admin, require_editor, etc.)
+│   │   ├── router.py                    # Endpoints for user registration and login
+│   │   ├── schemas.py                   # Pydantic validation models for user data
+│   │   └── security.py                  # JWT generation, validation, and password hashing (bcrypt)
+│   ├── documents/                       # Document Management Module
 │   │   ├── __init__.py
-│   │   └── router.py
-│   ├── geo                              ← NEW: Geo hierarchy module
+│   │   └── router.py                    # Endpoints for generating S3 presigned URLs for PDFs
+│   ├── geo/                             # Geographical Hierarchy Module
 │   │   ├── __init__.py
-│   │   └── router.py
-│   ├── plots                            ← NEW: Plots CRUD module
+│   │   └── router.py                    # API for browsing Countries, States, and Districts
+│   ├── plots/                           # Land Parcels / Plots Module
 │   │   ├── __init__.py
-│   │   ├── router.py
-│   │   └── schemas.py
-│   ├── alembic.ini
-│   ├── config.py                        ← UPDATED: MinIO + ADMIN_PASSWORD settings
-│   ├── database.py
-│   ├── Dockerfile                       ← NEW
-│   ├── entrypoint.sh                    ← NEW: Runs migrations + seed + uvicorn
-│   ├── kml_parser.py                    ← NEW: KML → Shapely → WKT/GeoJSON parser
-│   ├── main.py                          ← UPDATED: CORS + all routers mounted
-│   ├── minio_client.py                  ← NEW: MinIO upload + presigned URL helper
-│   ├── models.py                        ← UPDATED: landmark, lat, lon, location_name added to Plot
-│   ├── requirements.txt                 ← UPDATED: minio, shapely, httpx added
-│   └── seed.py                          ← NEW: Idempotent admin user + Coimbatore geo seed
-├── docs
-│   └── Coimbatore_plot_1.kml            ← Sample KML for testing
-├── frontend
-│   ├── public
-│   ├── src
-│   │   ├── api
-│   │   │   ├── auth.js                  ← NEW
-│   │   │   ├── client.js                ← NEW: Axios + JWT interceptor
-│   │   │   ├── documents.js             ← NEW
-│   │   │   ├── geo.js                   ← NEW
-│   │   │   └── plots.js                 ← NEW
-│   │   ├── assets
-│   │   ├── components
-│   │   │   └── Header.jsx               ← NEW: Logo + Login/Logout
-│   │   ├── context
-│   │   │   └── AuthContext.jsx          ← NEW: JWT auth state
-│   │   ├── pages
-│   │   │   ├── HomePage.jsx             ← NEW: Two-card home
-│   │   │   ├── LoginPage.jsx            ← NEW: Email/password login
-│   │   │   ├── ManagePage.jsx           ← NEW: Admin parcel management
-│   │   │   ├── MapPage.jsx              ← NEW: Leaflet satellite map + parcel polygons + info panel
-│   │   │   └── NavigatorPage.jsx        ← NEW: India → TN → Coimbatore drill-down
-│   │   ├── App.css
-│   │   ├── App.jsx                      ← UPDATED: react-router-dom routes
-│   │   ├── index.css                    ← UPDATED: Full design system CSS
-│   │   └── main.jsx
-│   ├── Dockerfile                       ← NEW
-│   ├── index.html                       ← UPDATED: title changed
-│   ├── package.json                     ← UPDATED: axios + react-router-dom added
-│   └── vite.config.js                   ← UPDATED: polling HMR + /api proxy
-├── .env                                 ← NEW: env vars (not committed)
-├── docker-compose.yml                   ← UPDATED: backend, frontend, minio, createbuckets services added
-├── phase_plan.md
-└── progress.md
+│   │   ├── router.py                    # API for plot CRUD operations (creating, fetching, deleting)
+│   │   └── schemas.py                   # Pydantic validation models for plot data
+│   ├── alembic.ini                      # Alembic configuration file (database URL config)
+│   ├── config.py                        # Centralized app configuration (env vars for DB, Auth, MinIO)
+│   ├── database.py                      # SQLAlchemy engine and session initialization
+│   ├── Dockerfile                       # Docker configuration to containerize the backend
+│   ├── entrypoint.sh                    # Startup script: runs DB migrations, seeds data, starts Uvicorn
+│   ├── kml_parser.py                    # Utility to parse raw KML files into Shapely geometries (WKT/GeoJSON)
+│   ├── main.py                          # FastAPI application entry point, mounts all routers & CORS
+│   ├── minio_client.py                  # Helper functions for interfacing with MinIO object storage
+│   ├── models.py                        # SQLAlchemy ORM definitions for all database tables
+│   ├── requirements.txt                 # Python package dependencies
+│   └── seed.py                          # Idempotent script that seeds the admin user and Coimbatore hierarchy
+├── data/                                # Sample Data for Testing
+│   └── samples/
+│       ├── Gandhipuram_Plot_B.kml       # Sample plot KML file
+│       ├── Irugur_Plot_A.kml            # Sample plot KML file
+│       ├── Podanur_Plot_C_Large.kml     # Sample plot KML file
+│       └── docs/
+│           ├── Deed_example.pdf         # Sample Deed document
+│           ├── FMB_example.pdf          # Sample FMB document
+│           └── Patta_example.pdf        # Sample Patta document
+├── frontend/                            # React Web Application (Vite)
+│   ├── public/                          # Static assets (Favicon, raw images)
+│   ├── src/
+│   │   ├── api/                         # Frontend API service layer
+│   │   │   ├── auth.js                  # Axios calls for login/registration
+│   │   │   ├── client.js                # Base Axios instance with JWT interceptors
+│   │   │   ├── documents.js             # Axios calls for document presigned URLs
+│   │   │   ├── geo.js                   # Axios calls for geographic hierarchy browsing
+│   │   │   └── plots.js                 # Axios calls for plot retrieval and KML uploads
+│   │   ├── assets/                      # Bundled static assets (Logos, vectors)
+│   │   ├── components/
+│   │   │   └── Header.jsx               # Navigation bar component with login/logout states
+│   │   ├── context/
+│   │   │   └── AuthContext.jsx          # React Context Provider managing JWT state in localStorage
+│   │   ├── pages/
+│   │   │   ├── HomePage.jsx             # Landing page providing routing to main application flows
+│   │   │   ├── LoginPage.jsx            # User authentication screen
+│   │   │   ├── ManagePage.jsx           # Admin dashboard for uploading KMLs and managing parcels
+│   │   │   ├── MapPage.jsx              # Core Leaflet map interface, polygon rendering, and plot details panel
+│   │   │   └── NavigatorPage.jsx        # Drill-down menu interface for selecting Regions (India -> TN -> Coimbatore)
+│   │   ├── App.css                      # Global and component-specific CSS styles
+│   │   ├── App.jsx                      # Main React component, configures react-router-dom routes
+│   │   ├── index.css                    # Tailwind-style utility classes and fundamental design system
+│   │   └── main.jsx                     # Vite entry point, mounts the React DOM tree
+│   ├── Dockerfile                       # Docker configuration to serve the frontend via dev server (HMR)
+│   ├── index.html                       # HTML template hosting the React application mount point
+│   ├── package.json                     # NPM dependencies and scripts (react-leaflet, react-router, axios)
+│   └── vite.config.js                   # Vite bundler configuration (defines API proxies and polling HMR)
+├── .env.example                         # Template for environment variables needed by docker-compose
+├── docker-compose.yml                   # Orchestrates full stack: DB, MinIO, Backend, Frontend
+├── phase_plan.md                        # Original architectural blueprint and reference document
+└── progress.md                          # Live project tracking, structure, and completed features
 ```
 
 ## Tech Stack
