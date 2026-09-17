@@ -138,19 +138,58 @@
 
 ### Phase 5: AI, OCR & Translation Layer
 - **Goal:** AI summary and document intelligence operate seamlessly in the background.
-- *(Full scope — not started)*
+- **Detailed Features to Implement:**
+  - **Background Workers:** Configure Celery tasks and Redis message broker.
+  - **OCR Pipeline:** Trigger text extraction (via Google Cloud Vision/Tesseract proxy) upon document upload; save to `document_extracts`.
+  - **Translation Pipeline:** Translate extracted text via API; cache results.
+  - **Summarization Pipeline:** Call Claude API combining FMB, Patta, and Deed text to output structured JSON (owner, area, flags); cache in `ai_summaries`.
+  - **APIs:** `POST /documents/{id}/ocr`, `POST /documents/{id}/translate`, `GET /plots/{id}/ai-summary`.
+  - **Frontend UI:** "Land Info" Panel featuring extracted raw text viewer, translation language dropdown, and AI-generated summary card.
+- **Tests to Run:** Celery async execution tests, API integration tests.
+- **Exit Criteria:** Uploading documents automatically generates and displays OCR text and AI summaries without blocking the main UI thread.
 
 ### Phase 6: Routing & Nearby Landmarks
-- *(Full scope — not started)*
+- **Goal:** Turn-by-turn directions and nearby points of interest (POIs) work directly on the Leaflet map.
+- **Detailed Features to Implement:**
+  - **OSRM Proxy:** `GET /plots/{id}/route` backend endpoint.
+  - **Geocoding Proxy:** Nominatim `/geocode` proxy for string-to-address lookups.
+  - **Overpass Proxy:** `GET /plots/{id}/nearby?radius=` proxy querying OSM for schools, hospitals, water bodies, and roads.
+  - **Frontend UI:** Routing module prompting device Geolocation or text address input.
+  - **Map Integration:** `Leaflet Routing Machine` implementation drawing route polylines and steps.
+  - **Frontend UI:** "Nearby Landmarks" toggle rendering categorized pins on the map.
+- **Tests to Run:** Proxy endpoint integration tests, OSRM route validity.
+- **Exit Criteria:** Users can request directions from an address to a plot and view a categorized list of nearby schools/hospitals.
 
 ### Phase 7: Land View Editing
-- *(Full scope — not started)*
+- **Goal:** Complete lifecycle management for plot metadata and ownership history.
+- **Detailed Features to Implement:**
+  - **Plot Updates:** `PATCH /plots/{id}` endpoint (restricted to Editor/Admin).
+  - **Ownership Transfer:** `POST /plots/{id}/transfer-ownership` workflow (creates new owner, archives old owner, inserts into `transactions` table).
+  - **Immutable Audit Logging:** Middleware/Triggers to record every write into `audit_log` with `payload_delta`, implementing hash-chaining (`prev_hash`, `row_hash`) for tamper-evidence.
+  - **Frontend UI:** "Land View" edit mode form for plots.
+  - **Frontend UI:** Ownership transfer modal and transaction history timeline.
+- **Tests to Run:** Transaction rollback tests, audit log cryptographic hash continuity tests.
+- **Exit Criteria:** Editors can successfully transfer plot ownership, with immediate UI reflection and a permanent, immutable audit trail.
 
 ### Phase 8: Unified Search
-- *(Full scope — not started)*
+- **Goal:** Global, fast, explicit search across owners, regions, and properties.
+- **Detailed Features to Implement:**
+  - **Database Indexing:** Setup PostgreSQL `pg_trgm` extension and GIN indexes on `owner_name`, `property_name`, and `geo_nodes.name`.
+  - **Search API:** `GET /search?q=` endpoint querying and ranking results across the three entities.
+  - **Frontend UI:** Global top-bar search input.
+  - **Frontend UI:** Typeahead autocomplete dropdown that jumps to the specific map `fitBounds()` on selection.
+- **Tests to Run:** Partial string matching latency tests, SQL query profiling.
+- **Exit Criteria:** Partial queries correctly resolve and navigate to plots with sub-second latency.
 
 ### Phase 9: Production Services Migration
-- *(Full scope — not started)*
+- **Goal:** Transition from the free-tier MVPs to full-scale, scalable production services.
+- **Detailed Features to Implement:**
+  - Upgrade mock/local S3 to AWS S3.
+  - Upgrade OCR fallbacks (Tesseract) to Google Cloud Vision / Azure Document Intelligence.
+  - Implement full production API keys for Claude and Translation services.
+  - Transition local database to managed cloud PostgreSQL (e.g., AWS RDS/Aurora).
+- **Tests to Run:** Comprehensive end-to-end regression tests, high-concurrency load testing on vector tiles.
+- **Exit Criteria:** The system handles production-level load with no rate limiting, running entirely on paid/managed cloud infrastructure.
 
 ---
 
