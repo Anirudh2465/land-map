@@ -1,111 +1,178 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { login, getMe } from '../api/auth'
 import Header from '../components/Header'
 
 export default function HomePage() {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, setUser, setToken } = useAuth()
 
-  function handleUpdateRecords() {
-    if (!user) {
-      navigate('/login?next=/navigate/manage')
-    } else {
-      navigate('/navigate/manage')
+  // Inline Login State
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function handleLogin(e) {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    try {
+      const data = await login(email, password)
+      setToken(data.access_token)
+      const me = await getMe()
+      setUser(me)
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Authentication failed. Please check your credentials.')
+    } finally {
+      setLoading(false)
     }
   }
 
   return (
-    <div className="page-container">
+    <div className="home-page-container">
+      {/* Background image layer with blur and darkening */}
+      <div className="home-bg-layer" />
+
+      {/* Header */}
       <Header />
-      <div className="content-wrapper">
-        <div style={{ textAlign: 'center', marginBottom: '2.5rem', marginTop: '1rem' }}>
-          <h1 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '0.5rem' }}>
+
+      {/* Content Area */}
+      <div className="home-content-wrapper">
+        <div style={{ textAlign: 'center', marginBottom: '2.25rem' }}>
+          <img
+            src="/logo.png"
+            alt="LMS Logo"
+            style={{
+              height: '84px',
+              width: 'auto',
+              marginBottom: '0.85rem',
+              filter: 'brightness(0) invert(1) drop-shadow(0 2px 10px rgba(0, 0, 0, 0.5))',
+            }}
+          />
+          <h1 className="home-hero-title">
             Land Management System
           </h1>
-          <p style={{ color: 'var(--color-text-muted)', fontSize: '1rem' }}>
-            Land Parcel Registry (Testing Build)
+          <p className="home-hero-subtitle">
+            Spatial Parcel Registry & GIS Analytics Portal
           </p>
         </div>
 
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: '1.5rem',
-          maxWidth: '700px',
-          margin: '0 auto',
-        }}>
-          {/* View Land Parcels */}
-          <button
-            id="btn-view-parcels"
-            onClick={() => navigate('/map')}
-            className="card"
-            style={{
-              textAlign: 'left',
-              cursor: 'pointer',
-              border: '2px solid transparent',
-              transition: 'border-color 0.15s, box-shadow 0.15s',
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.borderColor = 'var(--color-primary)'
-              e.currentTarget.style.boxShadow = '0 0 0 3px rgba(37,99,235,0.1)'
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.borderColor = 'transparent'
-              e.currentTarget.style.boxShadow = 'var(--shadow)'
-            }}
-          >
-            <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🗺️</div>
-            <h2 style={{ fontSize: '1.2rem', fontWeight: '600', marginBottom: '0.5rem' }}>
-              View Land Parcels
-            </h2>
-            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', lineHeight: '1.5' }}>
-              Browse and explore land parcels on an interactive satellite map.
-              View parcel boundaries, details, and documents.
-            </p>
-          </button>
-
-          {/* Update Records */}
-          <button
-            id="btn-update-records"
-            onClick={handleUpdateRecords}
-            className="card"
-            style={{
-              textAlign: 'left',
-              cursor: 'pointer',
-              border: '2px solid transparent',
-              transition: 'border-color 0.15s, box-shadow 0.15s',
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.borderColor = 'var(--color-primary)'
-              e.currentTarget.style.boxShadow = '0 0 0 3px rgba(37,99,235,0.1)'
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.borderColor = 'transparent'
-              e.currentTarget.style.boxShadow = 'var(--shadow)'
-            }}
-          >
-            <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>
-              {user ? '📋' : '🔒'}
+        {!user ? (
+          /* Mandatory Login Card */
+          <div className="glass-login-card">
+            <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+              <span className="glass-card-badge">Portal Authentication</span>
+              <h2 style={{ fontSize: '1.4rem', fontWeight: '700', marginBottom: '0.4rem', color: '#0f172a' }}>
+                Sign In to LMS
+              </h2>
+              <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
+                Enter your credentials to access your account.
+              </p>
             </div>
-            <h2 style={{ fontSize: '1.2rem', fontWeight: '600', marginBottom: '0.5rem' }}>
-              Update Records
-              {!user && (
-                <span style={{
-                  fontSize: '0.75rem',
-                  marginLeft: '0.5rem',
-                  color: 'var(--color-text-muted)',
-                  fontWeight: 400,
-                }}>
-                  (Login required)
-                </span>
-              )}
-            </h2>
-            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', lineHeight: '1.5' }}>
-              Admin portal to add, edit, and manage land parcel records,
-              KML boundaries, and supporting documents.
-            </p>
-          </button>
-        </div>
+
+            {error && (
+              <div className="alert alert-error" style={{ marginBottom: '1.25rem', fontSize: '0.85rem' }}>
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleLogin}>
+              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                <label className="glass-input-label" htmlFor="email">
+                  Email Address
+                </label>
+                <input
+                  id="email"
+                  type="email"
+                  className="form-input glass-input"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="admin@lms.com"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                <label className="glass-input-label" htmlFor="password">
+                  Password
+                </label>
+                <input
+                  id="password"
+                  type="password"
+                  className="form-input glass-input"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+
+              <button
+                id="btn-login-submit"
+                type="submit"
+                className="glass-btn-primary"
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                disabled={loading}
+              >
+                {loading ? <span className="spinner" /> : 'Sign In'}
+              </button>
+            </form>
+          </div>
+        ) : (
+          /* Logged In Light Theme Action Cards */
+          <div className="action-card-grid">
+            {/* View Land Parcels */}
+            <div
+              id="btn-view-parcels"
+              className="glass-action-card card-view"
+              onClick={() => navigate('/map')}
+            >
+              <div className="action-card-header-row">
+                <div className="action-card-icon-wrapper">🗺️</div>
+              </div>
+              <h2 className="action-card-title">
+                View Land Parcels
+              </h2>
+              <p className="action-card-desc">
+                Explore GIS boundaries, high-resolution satellite imagery, and underlying legal documents.
+              </p>
+              <div className="action-card-footer">
+                <span>Access Interactive Map</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                  <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+              </div>
+            </div>
+
+            {/* Update Records */}
+            <div
+              id="btn-update-records"
+              className="glass-action-card card-update"
+              onClick={() => navigate('/navigate/manage')}
+            >
+              <div className="action-card-header-row">
+                <div className="action-card-icon-wrapper">📋</div>
+              </div>
+              <h2 className="action-card-title">
+                Update Records
+              </h2>
+              <p className="action-card-desc">
+                Administrative portal to manage parcel records, upload KML geometries, and attach FMB/Patta/Deed files.
+              </p>
+              <div className="action-card-footer">
+                <span>Manage Parcel Database</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                  <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

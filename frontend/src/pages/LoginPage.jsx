@@ -35,26 +35,30 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="page-container">
+    <div className="home-page-container">
+      <div className="home-bg-layer" />
       <Header />
-      <div className="content-wrapper" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 60px)' }}>
-        <div className="card" style={{ width: '100%', maxWidth: '400px' }}>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '0.25rem' }}>
-            Sign In
-          </h1>
-          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
-            Access the admin portal
-          </p>
+      <div className="home-content-wrapper">
+        <div className="glass-login-card">
+          <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+            <span className="glass-card-badge">Portal Authentication</span>
+            <h1 style={{ fontSize: '1.4rem', fontWeight: '700', marginBottom: '0.4rem', color: '#0f172a' }}>
+              Sign In to LMS
+            </h1>
+            <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
+              Enter your credentials to access your account.
+            </p>
+          </div>
 
-          {error && <div className="alert alert-error">{error}</div>}
+          {error && <div className="alert alert-error" style={{ marginBottom: '1.25rem', fontSize: '0.85rem' }}>{error}</div>}
 
           <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label className="form-label" htmlFor="email">Email</label>
+            <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+              <label className="glass-input-label" htmlFor="email">Email Address</label>
               <input
                 id="email"
                 type="email"
-                className="form-input"
+                className="form-input glass-input"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 placeholder="admin@lms.com"
@@ -62,12 +66,12 @@ export default function LoginPage() {
                 autoFocus
               />
             </div>
-            <div className="form-group">
-              <label className="form-label" htmlFor="password">Password</label>
+            <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+              <label className="glass-input-label" htmlFor="password">Password</label>
               <input
                 id="password"
                 type="password"
-                className="form-input"
+                className="form-input glass-input"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 placeholder="••••••••"
@@ -77,8 +81,8 @@ export default function LoginPage() {
             <button
               id="btn-login-submit"
               type="submit"
-              className="btn btn-primary"
-              style={{ width: '100%', justifyContent: 'center', marginTop: '0.5rem' }}
+              className="glass-btn-primary"
+              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               disabled={loading}
             >
               {loading ? <span className="spinner" /> : 'Sign In'}
@@ -86,7 +90,7 @@ export default function LoginPage() {
           </form>
 
           <div style={{ marginTop: '1.25rem', textAlign: 'center' }}>
-            <Link to="/" style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
+            <Link to="/" style={{ fontSize: '0.875rem', color: '#64748b', fontWeight: '500' }}>
               ← Back to Home
             </Link>
           </div>

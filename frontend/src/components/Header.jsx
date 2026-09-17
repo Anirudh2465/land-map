@@ -79,8 +79,8 @@ export default function Header({ onBack, showBack, centerContent }) {
         {user ? (
           <>
             <div className="header-user-badge">
-              <span>{user.full_name}</span>
-              <span className="header-user-role">({user.role})</span>
+              <span className="header-user-name">{user.full_name}</span>
+              <span className="header-role-pill">{user.role}</span>
             </div>
 
             {/* Profile Avatar Button */}
@@ -100,7 +100,7 @@ export default function Header({ onBack, showBack, centerContent }) {
                   <img
                     src="/profile.png"
                     alt={user.full_name}
-                    style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid #e2e8f0' }}
+                    style={{ width: '68px', height: '68px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid #e2e8f0' }}
                   />
                   <div>
                     <div className="user-dropdown-name">{user.full_name}</div>
