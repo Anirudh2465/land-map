@@ -16,6 +16,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { getPlots, getPlot } from '../api/plots'
 import { getDocumentUrl } from '../api/documents'
+import { triggerOcr, translateDocument, getAiSummary } from '../api/ai'
 import Header from '../components/Header'
 
 // Coimbatore district approximate bounds [SW, NE]
@@ -60,6 +61,12 @@ export default function MapPage() {
   const [selectedPlot, setSelectedPlot] = useState(null)
   const [pdfModal, setPdfModal] = useState(null) // { url, docType }
   const [pdfLoading, setPdfLoading] = useState(false)
+
+  // AI State
+  const [ocrResults, setOcrResults] = useState({}) // { [docId]: { text, translatedText, translatedTo, loading } }
+  const [ocrLang, setOcrLang] = useState({}) // { [docId]: 'ta' }
+  const [aiSummary, setAiSummary] = useState(null)
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false)
 
   // ── Init Map ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -240,6 +247,7 @@ export default function MapPage() {
     selectedLayerRef.current = { layer: geoLayer }
 
     setSelectedPlot(plot)
+    setAiSummary(null) // Reset AI summary when changing plots
 
     // Wait for React to render the panel and physically resize the map container
     setTimeout(() => {
@@ -277,9 +285,64 @@ export default function MapPage() {
       const { url } = await getDocumentUrl(doc.id)
       setPdfModal({ url, docType: doc.doc_type })
     } catch {
-      alert('Failed to load document URL.')
+      alert('Failed to get document URL.')
     } finally {
       setPdfLoading(false)
+    }
+  }
+
+  const handleExtractText = async (doc) => {
+    setOcrResults(prev => ({ ...prev, [doc.id]: { ...prev[doc.id], loading: true } }))
+    try {
+      const res = await triggerOcr(doc.id)
+      setOcrResults(prev => ({
+        ...prev,
+        [doc.id]: { 
+          text: res.extracted_text, 
+          translatedText: res.translated_text, 
+          translatedTo: res.translated_to, 
+          loading: false 
+        }
+      }))
+    } catch (err) {
+      console.error(err)
+      alert('Failed to extract text. Make sure backend is running with Tesseract.')
+      setOcrResults(prev => ({ ...prev, [doc.id]: { ...prev[doc.id], loading: false } }))
+    }
+  }
+
+  const handleTranslate = async (doc) => {
+    const lang = ocrLang[doc.id] || 'ta'
+    setOcrResults(prev => ({ ...prev, [doc.id]: { ...prev[doc.id], loading: true } }))
+    try {
+      const res = await translateDocument(doc.id, lang)
+      setOcrResults(prev => ({
+        ...prev,
+        [doc.id]: { 
+          ...prev[doc.id],
+          translatedText: res.translated_text, 
+          translatedTo: res.translated_to, 
+          loading: false 
+        }
+      }))
+    } catch (err) {
+      console.error(err)
+      alert(err.response?.data?.detail || 'Translation failed.')
+      setOcrResults(prev => ({ ...prev, [doc.id]: { ...prev[doc.id], loading: false } }))
+    }
+  }
+
+  const handleGenerateSummary = async () => {
+    if (!selectedPlot) return
+    setAiSummaryLoading(true)
+    try {
+      const res = await getAiSummary(selectedPlot.id)
+      setAiSummary(res.summary_text)
+    } catch (err) {
+      console.error(err)
+      alert(err.response?.data?.detail || 'Failed to generate summary.')
+    } finally {
+      setAiSummaryLoading(false)
     }
   }
 
@@ -474,37 +537,89 @@ export default function MapPage() {
                     letterSpacing: '0.06em',
                     marginBottom: '0.75rem',
                   }}>
-                    Documents
+                    Documents & AI Extraction
                   </div>
                   {selectedPlot.documents.map(doc => (
                     <div key={doc.id} style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '0.6rem 0.75rem',
+                      padding: '0.75rem',
                       background: 'var(--color-bg)',
                       borderRadius: 'var(--radius)',
-                      marginBottom: '0.5rem',
+                      marginBottom: '1rem',
                       border: '1px solid var(--color-border)',
                     }}>
-                      <span style={{ fontSize: '0.875rem', fontWeight: '500' }}>
-                        📄 {doc.doc_type}
-                      </span>
-                      <div style={{ display: 'flex', gap: '0.4rem' }}>
-                        <button
-                          className="btn btn-outline btn-sm"
-                          onClick={() => handlePreviewPdf(doc)}
-                          disabled={pdfLoading}
-                        >
-                          Preview
-                        </button>
-                        <button
-                          className="btn btn-primary btn-sm"
-                          onClick={() => handleDownloadPdf(doc)}
-                        >
-                          ↓
-                        </button>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                        <span style={{ fontSize: '0.875rem', fontWeight: '600' }}>
+                          📄 {doc.doc_type}
+                        </span>
+                        <div style={{ display: 'flex', gap: '0.4rem' }}>
+                          <button
+                            className="btn btn-outline btn-sm"
+                            onClick={() => handlePreviewPdf(doc)}
+                            disabled={pdfLoading}
+                          >
+                            Preview
+                          </button>
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={() => handleDownloadPdf(doc)}
+                          >
+                            ↓
+                          </button>
+                        </div>
                       </div>
+
+                      {/* OCR UI */}
+                      {!ocrResults[doc.id]?.text && (
+                        <button 
+                          className="btn btn-outline btn-sm" 
+                          style={{ width: '100%', fontSize: '0.75rem', marginTop: '0.25rem' }}
+                          onClick={() => handleExtractText(doc)}
+                          disabled={ocrResults[doc.id]?.loading}
+                        >
+                          {ocrResults[doc.id]?.loading ? 'Extracting Text...' : '✨ Extract Text with AI'}
+                        </button>
+                      )}
+
+                      {ocrResults[doc.id]?.text && (
+                        <div style={{ marginTop: '0.75rem', background: 'var(--color-surface)', padding: '0.75rem', borderRadius: '4px', fontSize: '0.8rem', border: '1px solid var(--color-border)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', alignItems: 'center' }}>
+                            <span style={{ fontWeight: '600', color: 'var(--color-primary)' }}>Extracted Text</span>
+                            <div style={{ display: 'flex', gap: '0.25rem' }}>
+                              <select 
+                                style={{ fontSize: '0.7rem', padding: '2px' }}
+                                value={ocrLang[doc.id] || 'ta'}
+                                onChange={e => setOcrLang(prev => ({ ...prev, [doc.id]: e.target.value }))}
+                              >
+                                <option value="en">English</option>
+                                <option value="ta">Tamil</option>
+                                <option value="hi">Hindi</option>
+                              </select>
+                              <button 
+                                className="btn btn-primary btn-sm" 
+                                style={{ fontSize: '0.65rem', padding: '2px 6px' }}
+                                onClick={() => handleTranslate(doc)}
+                                disabled={ocrResults[doc.id]?.loading}
+                              >
+                                Translate
+                              </button>
+                            </div>
+                          </div>
+                          
+                          {ocrResults[doc.id].translatedText ? (
+                            <div style={{ maxHeight: '150px', overflowY: 'auto', whiteSpace: 'pre-wrap', color: 'var(--color-text)' }}>
+                              <strong style={{fontSize:'0.75rem'}}>Translation:</strong><br/>
+                              {ocrResults[doc.id].translatedText}
+                              <hr style={{margin: '0.5rem 0'}}/>
+                              <strong style={{fontSize:'0.75rem'}}>Original:</strong><br/>
+                              <span style={{ color: 'var(--color-text-muted)' }}>{ocrResults[doc.id].text}</span>
+                            </div>
+                          ) : (
+                            <div style={{ maxHeight: '150px', overflowY: 'auto', whiteSpace: 'pre-wrap', color: 'var(--color-text-muted)' }}>
+                              {ocrResults[doc.id].text}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -521,6 +636,52 @@ export default function MapPage() {
                   fontSize: '0.875rem',
                 }}>
                   No documents uploaded yet.
+                </div>
+              )}
+
+              {/* AI Summary Section */}
+              {selectedPlot.documents && selectedPlot.documents.length > 0 && (
+                <div style={{ marginTop: '1.5rem', marginBottom: '2rem' }}>
+                  {!aiSummary && (
+                    <button 
+                      className="btn btn-primary" 
+                      style={{ width: '100%' }}
+                      onClick={handleGenerateSummary}
+                      disabled={aiSummaryLoading}
+                    >
+                      {aiSummaryLoading ? 'Generating Summary...' : '🧠 Generate Plot AI Summary'}
+                    </button>
+                  )}
+                  {aiSummary && (
+                    <div style={{
+                      background: 'linear-gradient(to right bottom, rgba(37,99,235,0.05), rgba(37,99,235,0.15))',
+                      border: '1px solid rgba(37,99,235,0.3)',
+                      borderRadius: 'var(--radius)',
+                      padding: '1rem',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                        <h4 style={{ margin: 0, color: 'var(--color-primary)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <span>✨</span> AI Summary
+                        </h4>
+                        <button 
+                          style={{ background: 'none', border: 'none', color: 'var(--color-primary)', cursor: 'pointer', fontSize: '0.75rem' }}
+                          onClick={() => handleGenerateSummary()}
+                          disabled={aiSummaryLoading}
+                        >
+                          ↻ Refresh
+                        </button>
+                      </div>
+                      
+                      <div style={{ 
+                        fontSize: '0.85rem', 
+                        lineHeight: '1.5',
+                        color: 'var(--color-text)',
+                        whiteSpace: 'pre-wrap' 
+                      }}>
+                        {aiSummary}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
