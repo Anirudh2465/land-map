@@ -16,7 +16,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { getPlots, getPlot } from '../api/plots'
 import { getDocumentUrl } from '../api/documents'
-import { getNodeByName } from '../api/geo'
+import { getNodeByName, getCountries, getChildren } from '../api/geo'
 import Header from '../components/Header'
 import { Search, ChevronDown, ChevronUp, X, FileText, Download, Eye, ChevronRight } from 'lucide-react'
 
@@ -119,6 +119,12 @@ export default function MapPage() {
   const [selectedDistrict, setSelectedDistrict] = useState('Coimbatore')
   const [activeDistrictId, setActiveDistrictId] = useState(districtId || null)
 
+  const [countries, setCountries] = useState([])
+  const [states, setStates] = useState([])
+  const [districts, setDistricts] = useState([])
+  const [indiaNode, setIndiaNode] = useState(null)
+  const [tnNode, setTnNode] = useState(null)
+
   // Floating Search & Side Panel Control States
   const [searchQuery, setSearchQuery] = useState('')
   const [isSearchOpen, setIsSearchOpen] = useState(false)
@@ -220,8 +226,27 @@ export default function MapPage() {
       .finally(() => setLoading(false))
   }, [activeDistrictId])
 
+  // ── Load Geo Nodes for Counts ──────────────────────────────────────
+  useEffect(() => {
+    getCountries().then(setCountries).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (indiaNode) {
+      getChildren(indiaNode.id).then(setStates).catch(() => {})
+    }
+  }, [indiaNode])
+
+  useEffect(() => {
+    if (tnNode) {
+      getChildren(tnNode.id).then(setDistricts).catch(() => {})
+    }
+  }, [tnNode])
+
   // ── Flow Handlers ───────────────────────────────────────────────────
-  function handleSelectIndia() {
+  async function handleSelectIndia() {
+    const node = await getNodeByName('COUNTRY', 'India').catch(() => null)
+    setIndiaNode(node)
     setIsBlurOverlayVisible(false)
     setCurrentStep('PANNING_INDIA')
     const map = mapInstanceRef.current
@@ -239,7 +264,9 @@ export default function MapPage() {
     }
   }
 
-  function handleSelectTamilNadu() {
+  async function handleSelectTamilNadu() {
+    const node = await getNodeByName('STATE', 'Tamil Nadu').catch(() => null)
+    setTnNode(node)
     setIsBlurOverlayVisible(false)
     setCurrentStep('PANNING_TN')
     const map = mapInstanceRef.current
@@ -879,116 +906,135 @@ export default function MapPage() {
         )}
 
         {/* Selection Flow Modal Overlay */}
-        {isBlurOverlayVisible && (
-          <div className="map-backdrop-overlay">
-            {currentStep === 'REGION' && (
-              <div className="map-selection-card">
-                <div className="map-selection-header">
-                  <div className="map-selection-icon">
-                    <img src="/world.png" alt="World" />
-                  </div>
-                  <h2 className="map-selection-title">Select Region</h2>
-                  <p className="map-selection-subtitle">Choose a region to explore registered land parcels</p>
-                </div>
-                <div className="selection-option-list">
-                  <button
-                    className="selection-option-btn"
-                    onClick={handleSelectIndia}
-                    autoFocus
-                  >
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                      <img src="/india-flag.png" alt="India" className="selection-option-img" />
-                      <span style={{ fontWeight: '600' }}>India</span>
-                    </span>
-                    <ChevronRight size={18} style={{ color: 'var(--color-primary)' }} />
-                  </button>
-                  <button
-                    className="selection-option-btn"
-                    onClick={() => {}}
-                  >
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                      <img src="/globe-small.png" alt="Overseas" className="selection-option-img" />
-                      <span style={{ fontWeight: '600' }}>Overseas</span>
-                    </span>
-                    <ChevronRight size={18} style={{ color: 'var(--color-text-muted)' }} />
-                  </button>
-                </div>
-              </div>
-            )}
+        {isBlurOverlayVisible && (() => {
+          const indiaNodeData = countries.find(c => c.name === 'India')
+          const indiaPlotCount = indiaNodeData ? indiaNodeData.plot_count : 0
 
-            {currentStep === 'STATE' && (
-              <div className="map-selection-card">
-                <div className="map-selection-header">
-                  <div className="map-selection-icon">
-                    <img src="/india.webp" alt="India" />
-                  </div>
-                  <h2 className="map-selection-title">Select State</h2>
-                  <p className="map-selection-subtitle">India • Choose state to view district boundaries</p>
-                </div>
-                <div className="selection-dropdown-wrapper">
-                  <label className="form-label" style={{ marginBottom: '0.5rem' }}>State</label>
-                  <select
-                    className="selection-select"
-                    value={selectedState}
-                    onChange={e => setSelectedState(e.target.value)}
-                  >
-                    <option value="Tamil Nadu">Tamil Nadu</option>
-                    {INDIA_STATES.filter(s => s !== 'Tamil Nadu').map(s => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
-                </div>
-                <button
-                  className="btn btn-primary"
-                  style={{ width: '100%', justifyContent: 'center', padding: '0.85rem' }}
-                  onClick={() => {
-                    if (selectedState === 'Tamil Nadu') {
-                      handleSelectTamilNadu()
-                    }
-                  }}
-                >
-                  Continue to State →
-                </button>
-              </div>
-            )}
+          const tnNodeData = states.find(s => s.name === 'Tamil Nadu')
+          const tnPlotCount = tnNodeData ? tnNodeData.plot_count : 0
 
-            {currentStep === 'DISTRICT' && (
-              <div className="map-selection-card">
-                <div className="map-selection-header">
-                  <div className="map-selection-icon">
-                    <img src="/tamil-nadu.png" alt="Tamil Nadu" />
+          const cbeNodeData = districts.find(d => d.name === 'Coimbatore')
+          const cbePlotCount = cbeNodeData ? cbeNodeData.plot_count : 0
+
+          return (
+            <div className="map-backdrop-overlay">
+              {currentStep === 'REGION' && (
+                <div className="map-selection-card">
+                  <div className="map-selection-header">
+                    <div className="map-selection-icon">
+                      <img src="/world.png" alt="World" />
+                    </div>
+                    <h2 className="map-selection-title">Select Region</h2>
+                    <p className="map-selection-subtitle">Choose a region to explore registered land parcels</p>
                   </div>
-                  <h2 className="map-selection-title">Select District</h2>
-                  <p className="map-selection-subtitle">Tamil Nadu • Choose district to explore parcel registry</p>
+                  <div className="selection-option-list">
+                    <button
+                      className="selection-option-btn"
+                      onClick={handleSelectIndia}
+                      autoFocus
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                        <img src="/india-flag.png" alt="India" className="selection-option-img" />
+                        <span style={{ fontWeight: '600' }}>India</span>
+                        {indiaPlotCount > 0 && (
+                          <span className="badge badge-blue" style={{ fontSize: '0.725rem' }}>
+                            {indiaPlotCount} {indiaPlotCount === 1 ? 'parcel' : 'parcels'}
+                          </span>
+                        )}
+                      </span>
+                      <ChevronRight size={18} style={{ color: 'var(--color-primary)' }} />
+                    </button>
+                    <button
+                      className="selection-option-btn"
+                      style={{ opacity: 0.65, cursor: 'not-allowed' }}
+                      onClick={() => {}}
+                      disabled
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                        <img src="/globe-small.png" alt="Overseas" className="selection-option-img" />
+                        <span style={{ fontWeight: '600' }}>Overseas</span>
+                        <span className="coming-soon-tag">Coming Soon</span>
+                      </span>
+                      <ChevronRight size={18} style={{ color: 'var(--color-text-muted)' }} />
+                    </button>
+                  </div>
                 </div>
-                <div className="selection-dropdown-wrapper">
-                  <label className="form-label" style={{ marginBottom: '0.5rem' }}>District</label>
-                  <select
-                    className="selection-select"
-                    value={selectedDistrict}
-                    onChange={e => setSelectedDistrict(e.target.value)}
+              )}
+
+              {currentStep === 'STATE' && (
+                <div className="map-selection-card">
+                  <div className="map-selection-header">
+                    <div className="map-selection-icon">
+                      <img src="/india.webp" alt="India" />
+                    </div>
+                    <h2 className="map-selection-title">Select State</h2>
+                    <p className="map-selection-subtitle">India • Choose state to view district boundaries</p>
+                  </div>
+                  <div className="selection-dropdown-wrapper">
+                    <label className="form-label" style={{ marginBottom: '0.5rem', fontWeight: '600' }}>State</label>
+                    <select
+                      className="selection-select"
+                      value={selectedState}
+                      onChange={e => setSelectedState(e.target.value)}
+                    >
+                      <option value="Tamil Nadu">Tamil Nadu {tnPlotCount > 0 ? `(${tnPlotCount} parcels)` : ''}</option>
+                      {INDIA_STATES.filter(s => s !== 'Tamil Nadu').map(s => (
+                        <option key={s} value={s} disabled>{s} (Coming Soon)</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    className="btn btn-primary"
+                    style={{ width: '100%', justifyContent: 'center', padding: '0.85rem', fontWeight: '600' }}
+                    onClick={() => {
+                      if (selectedState === 'Tamil Nadu') {
+                        handleSelectTamilNadu()
+                      }
+                    }}
                   >
-                    <option value="Coimbatore">Coimbatore</option>
-                    {TN_DISTRICTS.filter(d => d !== 'Coimbatore').map(d => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
+                    Continue to State →
+                  </button>
                 </div>
-                <button
-                  className="btn btn-primary"
-                  style={{ width: '100%', justifyContent: 'center', padding: '0.85rem' }}
-                  onClick={() => {
-                    if (selectedDistrict === 'Coimbatore') {
-                      handleSelectCoimbatore()
-                    }
-                  }}
-                >
-                  Explore District Parcels →
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+              )}
+
+              {currentStep === 'DISTRICT' && (
+                <div className="map-selection-card">
+                  <div className="map-selection-header">
+                    <div className="map-selection-icon">
+                      <img src="/tamil-nadu.png" alt="Tamil Nadu" />
+                    </div>
+                    <h2 className="map-selection-title">Select District</h2>
+                    <p className="map-selection-subtitle">Tamil Nadu • Choose district to explore parcel registry</p>
+                  </div>
+                  <div className="selection-dropdown-wrapper">
+                    <label className="form-label" style={{ marginBottom: '0.5rem', fontWeight: '600' }}>District</label>
+                    <select
+                      className="selection-select"
+                      value={selectedDistrict}
+                      onChange={e => setSelectedDistrict(e.target.value)}
+                    >
+                      <option value="Coimbatore">Coimbatore {cbePlotCount > 0 ? `(${cbePlotCount} parcels)` : ''}</option>
+                      {TN_DISTRICTS.filter(d => d !== 'Coimbatore').map(d => (
+                        <option key={d} value={d} disabled>{d} (Coming Soon)</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    className="btn btn-primary"
+                    style={{ width: '100%', justifyContent: 'center', padding: '0.85rem', fontWeight: '600' }}
+                    onClick={() => {
+                      if (selectedDistrict === 'Coimbatore') {
+                        handleSelectCoimbatore()
+                      }
+                    }}
+                  >
+                    Explore District Parcels →
+                  </button>
+                </div>
+              )}
+            </div>
+          )
+        })()}
       </div>
 
       {/* PDF Preview Modal */}

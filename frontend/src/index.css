@@ -608,21 +608,23 @@ input, select, textarea { font: inherit; }
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.5);
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
-  padding: 1rem;
+  z-index: 20000;
+  padding: 6rem 1.5rem 2.5rem;
 }
 
 .modal {
   background: var(--color-surface);
   border-radius: var(--radius-lg);
-  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.35);
   width: 100%;
   max-width: 680px;
-  max-height: 90vh;
+  max-height: calc(100vh - 10rem);
   overflow-y: auto;
 }
 
@@ -1180,12 +1182,12 @@ input, select, textarea { font: inherit; }
 .modal-large {
   max-width: 860px;
   width: 95%;
-  max-height: 90vh;
+  max-height: calc(100vh - 10rem);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   border-radius: var(--radius-lg);
-  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.3);
+  box-shadow: 0 25px 60px -15px rgba(15, 23, 42, 0.4);
 }
 
 .modal-header-nav {

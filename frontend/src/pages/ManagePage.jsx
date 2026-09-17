@@ -231,34 +231,87 @@ export default function ManagePage() {
   }
 
   return (
-    <div className="page-container">
-      <Header />
-      <div className="content-wrapper">
+    <div className="home-page-container">
+      {/* Background image layer with blur and darkening */}
+      <div className="home-bg-layer" />
+
+      {/* Header */}
+      <Header
+        onBack={() => navigate('/navigate/manage')}
+        centerContent={
+          <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
+            Update Records › Coimbatore
+          </span>
+        }
+      />
+
+      {/* Content Wrapper */}
+      <div
+        className="content-wrapper"
+        style={{
+          position: 'relative',
+          zIndex: 1,
+          maxWidth: '1100px',
+          margin: '0 auto',
+          padding: '2rem 1.5rem',
+          width: '100%',
+          flex: 1,
+        }}
+      >
         {/* Breadcrumb */}
-        <nav className="breadcrumb">
-          <a href="/">Home</a>
-          <span className="breadcrumb-sep">›</span>
-          <button onClick={() => navigate(-1)}>Update Records</button>
-          <span className="breadcrumb-sep">›</span>
-          <span>Coimbatore</span>
+        <nav className="breadcrumb" style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <a href="/" style={{ color: 'rgba(255, 255, 255, 0.8)', textDecoration: 'none', fontWeight: '500' }}>Home</a>
+          <span className="breadcrumb-sep" style={{ color: 'rgba(255, 255, 255, 0.4)' }}>›</span>
+          <button
+            onClick={() => navigate('/navigate/manage')}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              color: 'rgba(255, 255, 255, 0.8)',
+              cursor: 'pointer',
+              fontWeight: '500',
+              textDecoration: 'underline'
+            }}
+          >
+            Update Records
+          </button>
+          <span className="breadcrumb-sep" style={{ color: 'rgba(255, 255, 255, 0.4)' }}>›</span>
+          <span style={{ color: '#ffffff', fontWeight: '600' }}>Coimbatore</span>
         </nav>
 
         {/* Page Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.75rem' }}>
           <div>
-            <h1 style={{ fontSize: '1.4rem', fontWeight: '700' }}>
+            <h1
+              style={{
+                fontSize: '1.8rem',
+                fontWeight: '800',
+                color: '#ffffff',
+                textShadow: '0 2px 10px rgba(0, 0, 0, 0.5)',
+                letterSpacing: '-0.02em',
+                margin: 0
+              }}
+            >
               Coimbatore — Land Parcels
             </h1>
-            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-              {plots.length} parcels registered
+            <p style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: '0.9rem', marginTop: '0.35rem', fontWeight: '500' }}>
+              {plots.length} {plots.length === 1 ? 'parcel' : 'parcels'} registered in district database
             </p>
           </div>
           <button
             id="btn-add-parcel"
             className="btn btn-primary"
+            style={{
+              padding: '0.75rem 1.25rem',
+              fontSize: '0.925rem',
+              fontWeight: '600',
+              boxShadow: '0 4px 16px rgba(37, 99, 235, 0.45)',
+              borderRadius: '10px'
+            }}
             onClick={() => { resetForm(); setShowForm(true) }}
           >
-            + Add New Parcel
+            + Add New Parcel
           </button>
         </div>
 
@@ -266,50 +319,73 @@ export default function ManagePage() {
 
         {/* Parcels Table */}
         {loading ? (
-          <div className="loading-center"><span className="spinner" /></div>
+          <div className="loading-center" style={{ padding: '4rem', color: '#ffffff' }}><span className="spinner" /></div>
         ) : plots.length === 0 ? (
-          <div className="card" style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '3rem' }}>
-            <p style={{ fontSize: '1rem' }}>No parcels yet.</p>
-            <p style={{ fontSize: '0.875rem', marginTop: '0.5rem' }}>
-              Click <strong>+ Add New Parcel</strong> to get started.
+          <div
+            style={{
+              background: 'rgba(255, 255, 255, 0.95)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              borderRadius: '16px',
+              border: '1px solid rgba(255, 255, 255, 0.4)',
+              boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.35)',
+              textAlign: 'center',
+              color: 'var(--color-text-muted)',
+              padding: '3.5rem 2rem'
+            }}
+          >
+            <p style={{ fontSize: '1.1rem', fontWeight: '600', color: '#0f172a' }}>No parcels registered yet.</p>
+            <p style={{ fontSize: '0.9rem', marginTop: '0.5rem', color: '#64748b' }}>
+              Click <strong style={{ color: 'var(--color-primary)' }}>+ Add New Parcel</strong> to add your first spatial plot.
             </p>
           </div>
         ) : (
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <table className="table">
+          <div
+            style={{
+              background: 'rgba(255, 255, 255, 0.96)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+              borderRadius: '16px',
+              border: '1px solid rgba(255, 255, 255, 0.5)',
+              boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.3)',
+              overflow: 'hidden'
+            }}
+          >
+            <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr>
-                  <th>Land ID</th>
-                  <th>Name</th>
-                  <th>Area</th>
-                  <th>Location</th>
-                  <th>Docs</th>
-                  <th></th>
+                <tr style={{ background: '#f8fafc', borderBottom: '1px solid var(--color-border)' }}>
+                  <th style={{ padding: '0.85rem 1.25rem', fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#475569' }}>Land ID</th>
+                  <th style={{ padding: '0.85rem 1.25rem', fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#475569' }}>Name</th>
+                  <th style={{ padding: '0.85rem 1.25rem', fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#475569' }}>Area</th>
+                  <th style={{ padding: '0.85rem 1.25rem', fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#475569' }}>Location</th>
+                  <th style={{ padding: '0.85rem 1.25rem', fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#475569' }}>Docs</th>
+                  <th style={{ padding: '0.85rem 1.25rem', fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#475569', textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {plots.map(plot => (
-                  <tr key={plot.id}>
-                    <td>
-                      <span className="badge badge-blue">{plot.plot_number || '—'}</span>
+                  <tr key={plot.id} style={{ borderBottom: '1px solid #e2e8f0', transition: 'background 0.15s ease' }}>
+                    <td style={{ padding: '0.9rem 1.25rem' }}>
+                      <span className="badge badge-blue" style={{ fontWeight: '600', fontSize: '0.8rem' }}>{plot.plot_number || '—'}</span>
                     </td>
-                    <td style={{ fontWeight: '500' }}>{plot.property_name || '—'}</td>
-                    <td style={{ color: 'var(--color-text-muted)' }}>
+                    <td style={{ padding: '0.9rem 1.25rem', fontWeight: '600', color: '#0f172a' }}>{plot.property_name || '—'}</td>
+                    <td style={{ padding: '0.9rem 1.25rem', color: '#475569', fontWeight: '500' }}>
                       {plot.area_value
                         ? `${Number(plot.area_value).toLocaleString()} ${plot.area_unit}`
                         : '—'}
                     </td>
-                    <td style={{ color: 'var(--color-text-muted)', fontSize: '0.825rem', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <td style={{ padding: '0.9rem 1.25rem', color: '#64748b', fontSize: '0.85rem', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {plot.location_name || (plot.lat && plot.lon ? `${plot.lat.toFixed(4)}, ${plot.lon.toFixed(4)}` : '—')}
                     </td>
-                    <td>
+                    <td style={{ padding: '0.9rem 1.25rem' }}>
                       {plot.documents && plot.documents.length > 0
-                        ? <span className="badge badge-green">{plot.documents.length} docs</span>
+                        ? <span className="badge badge-green" style={{ fontWeight: '600' }}>{plot.documents.length} docs</span>
                         : <span className="badge badge-gray">None</span>}
                     </td>
-                    <td>
+                    <td style={{ padding: '0.9rem 1.25rem', textAlign: 'right' }}>
                       <button
                         className="btn btn-danger btn-sm"
+                        style={{ fontWeight: '600', borderRadius: '6px' }}
                         onClick={() => setDeleteConfirm(plot.id)}
                       >
                         Delete
