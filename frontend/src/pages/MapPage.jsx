@@ -161,9 +161,8 @@ export default function MapPage() {
     )
     labelsLayerRef.current = labelsLayer
 
-    // Only add labels if already in READY step on initial load
+    // Only fit bounds if already in READY step on initial load
     if (districtId) {
-      labelsLayer.addTo(map)
       map.fitBounds(CBE_BOUNDS, { padding: [20, 20] })
     }
 
@@ -177,22 +176,39 @@ export default function MapPage() {
     }
   }, [districtId])
 
-  // ── Dynamic Labels & Borders Toggle ──────────────────────────────────
+  // ── Dynamic Visibility of KML Parcels & Places/Labels Layer ─────────────
   useEffect(() => {
     const map = mapInstanceRef.current
     const labelsLayer = labelsLayerRef.current
-    if (!map || !labelsLayer) return
+    if (!map) return
 
     if (currentStep === 'READY') {
-      if (!map.hasLayer(labelsLayer)) {
+      // Show reference labels & boundaries
+      if (labelsLayer && !map.hasLayer(labelsLayer)) {
         labelsLayer.addTo(map)
       }
+      // Show parcel GeoJSON polygons
+      layersRef.current.forEach(({ layer }) => {
+        if (!map.hasLayer(layer)) {
+          layer.addTo(map)
+        }
+      })
     } else {
-      if (map.hasLayer(labelsLayer)) {
+      // Hide reference labels & boundaries
+      if (labelsLayer && map.hasLayer(labelsLayer)) {
         map.removeLayer(labelsLayer)
       }
+      // Hide parcel GeoJSON polygons & label markers
+      layersRef.current.forEach(({ layer, labelMarker }) => {
+        if (map.hasLayer(layer)) {
+          map.removeLayer(layer)
+        }
+        if (labelMarker && map.hasLayer(labelMarker)) {
+          map.removeLayer(labelMarker)
+        }
+      })
     }
-  }, [currentStep])
+  }, [currentStep, plots])
 
   // ── Load Plots ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -257,6 +273,14 @@ export default function MapPage() {
           targetId = node.id
           setActiveDistrictId(node.id)
         }
+      } else {
+        if (plots.length === 0) {
+          setLoading(true)
+          getPlots(targetId)
+            .then(setPlots)
+            .catch(err => setError(err.response?.data?.detail || 'Failed to load parcels.'))
+            .finally(() => setLoading(false))
+        }
       }
     } catch (e) {
       console.error('Error fetching Coimbatore node:', e)
@@ -286,6 +310,7 @@ export default function MapPage() {
     if (currentStep === 'READY') {
       setPlots([])
       setSelectedPlot(null)
+      setActiveDistrictId(null)
       setCurrentStep('DISTRICT')
       setIsBlurOverlayVisible(true)
       if (map) {
@@ -379,7 +404,10 @@ export default function MapPage() {
 
       const geoLayer = L.geoJSON(plot.boundary_geojson, {
         style: PARCEL_STYLE,
-      }).addTo(map)
+      })
+      if (currentStep === 'READY') {
+        geoLayer.addTo(map)
+      }
 
       // Add popup
       const areaText = plot.area_value ? `${Number(plot.area_value).toLocaleString()} ${plot.area_unit || 'sqm'}` : 'N/A'
@@ -435,7 +463,7 @@ export default function MapPage() {
     function updateLabels() {
       const zoom = map.getZoom()
       layersRef.current.forEach(({ labelMarker }) => {
-        if (zoom >= 14) {
+        if (currentStep === 'READY' && zoom >= 14) {
           if (!map.hasLayer(labelMarker)) labelMarker.addTo(map)
           // Show/hide name part
           const el = labelMarker.getElement()
@@ -455,7 +483,7 @@ export default function MapPage() {
     return () => {
       map.off('zoomend', updateLabels)
     }
-  }, [plots])
+  }, [plots, currentStep])
 
   function handleSelectPlotFromList(plot) {
     const item = layersRef.current.find(l => l.plot.id === plot.id)
