@@ -1,19 +1,8 @@
 # LPMS Progress Tracker
 
-## Repository Structure
+## Repository Structure & File Descriptions
 ```text
 .
-├── backend
-│   ├── alembic
-│   │   ├── versions
-│   │   │   └── 0001_initial_schema.py   ← NEW: Initial migration (all tables)
-│   │   ├── env.py
-│   │   └── script.py.mako
-│   ├── auth
-│   │   ├── dependencies.py
-│   │   ├── router.py
-│   │   ├── schemas.py
-│   │   └── security.py
 │   ├── documents                        ← NEW: Documents module
 │   │   ├── __init__.py
 │   │   └── router.py
