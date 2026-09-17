@@ -208,7 +208,16 @@ export default function MapPage() {
     }
   }, [plots])
 
-  // ── Select a Parcel ──────────────────────────────────────────────────
+  function handleSelectPlotFromList(plot) {
+    const item = layersRef.current.find(l => l.plot.id === plot.id)
+    if (!item) return
+    handleSelectPlot(plot, item.layer, item.layer.getBounds())
+    const layers = item.layer.getLayers()
+    if (layers.length > 0) {
+      layers[0].openPopup()
+    }
+  }
+
   async function handleSelectPlot(plot, geoLayer, bounds) {
     // Reset previous selected
     if (selectedLayerRef.current) {
@@ -305,6 +314,68 @@ export default function MapPage() {
 
       {/* Map + Panel */}
       <div style={{ flex: 1, display: 'flex', position: 'relative', overflow: 'hidden' }}>
+        
+        {/* Left Sidebar: Plot List */}
+        <div style={{
+          width: '300px',
+          flexShrink: 0,
+          background: 'var(--color-surface)',
+          borderRight: '1px solid var(--color-border)',
+          display: 'flex',
+          flexDirection: 'column',
+          zIndex: 10,
+        }}>
+          <div style={{
+            padding: '1rem',
+            borderBottom: '1px solid var(--color-border)',
+            background: '#f8fafc',
+            fontWeight: '600',
+            fontSize: '0.95rem'
+          }}>
+            Parcels in Region
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
+            {plots.map(plot => {
+              const isSelected = selectedPlot?.id === plot.id
+              return (
+                <div
+                  key={plot.id}
+                  onClick={() => handleSelectPlotFromList(plot)}
+                  style={{
+                    padding: '0.75rem',
+                    border: '1px solid',
+                    borderColor: isSelected ? 'var(--color-primary)' : 'transparent',
+                    borderBottomColor: isSelected ? 'var(--color-primary)' : 'var(--color-border)',
+                    cursor: 'pointer',
+                    background: isSelected ? 'var(--color-primary-light)' : 'transparent',
+                    borderRadius: 'var(--radius)',
+                    marginBottom: '0.25rem',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={e => {
+                    if (!isSelected) e.currentTarget.style.background = '#f1f5f9'
+                  }}
+                  onMouseLeave={e => {
+                    if (!isSelected) e.currentTarget.style.background = 'transparent'
+                  }}
+                >
+                  <div style={{ fontWeight: '600', fontSize: '0.9rem', color: isSelected ? 'var(--color-primary)' : 'var(--color-text)' }}>
+                    {plot.plot_number || 'Parcel'}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.15rem' }}>
+                    {plot.property_name || 'Unnamed Parcel'}
+                  </div>
+                </div>
+              )
+            })}
+            {plots.length === 0 && !loading && (
+              <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
+                No parcels found.
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Map */}
         <div
           ref={mapRef}
