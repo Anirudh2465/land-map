@@ -52,3 +52,7 @@ def get_presigned_url(object_name: str, expires_seconds: int = 3600) -> str:
         expires=timedelta(seconds=expires_seconds),
     )
     return url
+
+
+# Module-level client instance for convenience
+minio_client = get_minio_client()

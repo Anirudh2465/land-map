@@ -37,7 +37,7 @@ export default function HomePage() {
           {/* View Land Parcels */}
           <button
             id="btn-view-parcels"
-            onClick={() => navigate('/navigate/view')}
+            onClick={() => navigate('/map')}
             className="card"
             style={{
               textAlign: 'left',

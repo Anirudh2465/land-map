@@ -17,13 +17,40 @@ import 'leaflet/dist/leaflet.css'
 import { getPlots, getPlot } from '../api/plots'
 import { getDocumentUrl } from '../api/documents'
 import { triggerOcr, translateDocument, getAiSummary } from '../api/ai'
+import { getNodeByName } from '../api/geo'
 import Header from '../components/Header'
+
+// Coordinates and view constants
+const WORLD_VIEW = { center: [20, 20], zoom: 2 }
+const INDIA_VIEW = { center: [22.5, 79.5], zoom: 5 }
+const TN_VIEW = { center: [11.12, 78.65], zoom: 7.5 }
 
 // Coimbatore district approximate bounds [SW, NE]
 const CBE_BOUNDS = L.latLngBounds(
   L.latLng(10.85, 76.85),
   L.latLng(11.25, 77.25)
 )
+
+const INDIA_STATES = [
+  'Tamil Nadu',
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
+  'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
+  'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram',
+  'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim',
+  'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
+]
+
+const TN_DISTRICTS = [
+  'Coimbatore',
+  'Ariyalur', 'Chengalpattu', 'Chennai', 'Cuddalore',
+  'Dharmapuri', 'Dindigul', 'Erode', 'Kallakurichi', 'Kanchipuram',
+  'Kanyakumari', 'Karur', 'Krishnagiri', 'Madurai', 'Mayiladuthurai',
+  'Nagapattinam', 'Namakkal', 'Nilgiris', 'Perambalur', 'Pudukkottai',
+  'Ramanathapuram', 'Ranipet', 'Salem', 'Sivaganga', 'Tenkasi',
+  'Thanjavur', 'Theni', 'Thoothukudi', 'Tiruchirappalli', 'Tirunelveli',
+  'Tirupathur', 'Tiruppur', 'Tiruvallur', 'Tiruvannamalai', 'Tiruvarur',
+  'Vellore', 'Villupuram', 'Virudhunagar',
+]
 
 const PARCEL_STYLE = {
   color: '#2563eb',
@@ -56,11 +83,18 @@ export default function MapPage() {
   const selectedLayerRef = useRef(null)
 
   const [plots, setPlots] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [selectedPlot, setSelectedPlot] = useState(null)
   const [pdfModal, setPdfModal] = useState(null) // { url, docType }
   const [pdfLoading, setPdfLoading] = useState(false)
+
+  // Selection flow states
+  const [currentStep, setCurrentStep] = useState(districtId ? 'READY' : 'REGION')
+  const [isBlurOverlayVisible, setIsBlurOverlayVisible] = useState(!districtId)
+  const [selectedState, setSelectedState] = useState('Tamil Nadu')
+  const [selectedDistrict, setSelectedDistrict] = useState('Coimbatore')
+  const [activeDistrictId, setActiveDistrictId] = useState(districtId || null)
 
   // AI State
   const [ocrResults, setOcrResults] = useState({}) // { [docId]: { text, translatedText, translatedTo, loading } }
@@ -72,9 +106,13 @@ export default function MapPage() {
   useEffect(() => {
     if (mapInstanceRef.current) return // Already initialized
 
+    const initialCenter = districtId ? CBE_BOUNDS.getCenter() : WORLD_VIEW.center
+    const initialZoom = districtId ? 11 : WORLD_VIEW.zoom
+
     const map = L.map(mapRef.current, {
-      center: CBE_BOUNDS.getCenter(),
-      zoom: 11,
+      center: initialCenter,
+      zoom: initialZoom,
+      minZoom: 2,
       maxZoom: 22,
       zoomControl: true,
     })
@@ -98,8 +136,9 @@ export default function MapPage() {
       }
     ).addTo(map)
 
-    // Fit to Coimbatore bounds on load
-    map.fitBounds(CBE_BOUNDS, { padding: [20, 20] })
+    if (districtId) {
+      map.fitBounds(CBE_BOUNDS, { padding: [20, 20] })
+    }
 
     mapInstanceRef.current = map
 
@@ -108,17 +147,175 @@ export default function MapPage() {
       map.remove()
       mapInstanceRef.current = null
     }
-  }, [])
+  }, [districtId])
 
   // ── Load Plots ───────────────────────────────────────────────────────
   useEffect(() => {
-    if (!districtId) return
+    if (!activeDistrictId) return
     setLoading(true)
-    getPlots(districtId)
+    getPlots(activeDistrictId)
       .then(setPlots)
       .catch(err => setError(err.response?.data?.detail || 'Failed to load parcels.'))
       .finally(() => setLoading(false))
-  }, [districtId])
+  }, [activeDistrictId])
+
+  // ── Flow Handlers ───────────────────────────────────────────────────
+  function handleSelectIndia() {
+    setIsBlurOverlayVisible(false)
+    setCurrentStep('PANNING_INDIA')
+    const map = mapInstanceRef.current
+    if (map) {
+      map.flyTo(INDIA_VIEW.center, INDIA_VIEW.zoom, { duration: 1.0, easeLinearity: 0.25 })
+      const timer = setTimeout(() => {
+        setCurrentStep('STATE')
+        setIsBlurOverlayVisible(true)
+      }, 1050)
+      map.once('moveend', () => {
+        clearTimeout(timer)
+        setCurrentStep('STATE')
+        setIsBlurOverlayVisible(true)
+      })
+    }
+  }
+
+  function handleSelectTamilNadu() {
+    setIsBlurOverlayVisible(false)
+    setCurrentStep('PANNING_TN')
+    const map = mapInstanceRef.current
+    if (map) {
+      map.flyTo(TN_VIEW.center, TN_VIEW.zoom, { duration: 1.0, easeLinearity: 0.25 })
+      const timer = setTimeout(() => {
+        setCurrentStep('DISTRICT')
+        setIsBlurOverlayVisible(true)
+      }, 1050)
+      map.once('moveend', () => {
+        clearTimeout(timer)
+        setCurrentStep('DISTRICT')
+        setIsBlurOverlayVisible(true)
+      })
+    }
+  }
+
+  async function handleSelectCoimbatore() {
+    setIsBlurOverlayVisible(false)
+    setCurrentStep('PANNING_CBE')
+    const map = mapInstanceRef.current
+    if (map) {
+      map.flyTo(CBE_BOUNDS.getCenter(), 11, { duration: 1.0, easeLinearity: 0.25 })
+    }
+
+    try {
+      let targetId = activeDistrictId
+      if (!targetId) {
+        const node = await getNodeByName('DISTRICT', 'Coimbatore')
+        if (node) {
+          targetId = node.id
+          setActiveDistrictId(node.id)
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching Coimbatore node:', e)
+    }
+
+    const timer = setTimeout(() => {
+      setCurrentStep('READY')
+      if (map) map.invalidateSize()
+    }, 1050)
+    if (map) {
+      map.once('moveend', () => {
+        clearTimeout(timer)
+        setCurrentStep('READY')
+        map.invalidateSize()
+      })
+    }
+  }
+
+  function handleBack() {
+    if (selectedPlot) {
+      handleClosePanel()
+      return
+    }
+
+    const map = mapInstanceRef.current
+
+    if (currentStep === 'READY') {
+      setPlots([])
+      setSelectedPlot(null)
+      setCurrentStep('DISTRICT')
+      setIsBlurOverlayVisible(true)
+      if (map) {
+        map.flyTo(TN_VIEW.center, TN_VIEW.zoom, { duration: 1.0 })
+      }
+      return
+    }
+
+    if (currentStep === 'DISTRICT') {
+      setCurrentStep('STATE')
+      setIsBlurOverlayVisible(true)
+      if (map) {
+        map.flyTo(INDIA_VIEW.center, INDIA_VIEW.zoom, { duration: 1.0 })
+      }
+      return
+    }
+
+    if (currentStep === 'STATE') {
+      setCurrentStep('REGION')
+      setIsBlurOverlayVisible(true)
+      if (map) {
+        map.flyTo(WORLD_VIEW.center, WORLD_VIEW.zoom, { duration: 1.0 })
+      }
+      return
+    }
+
+    if (currentStep === 'REGION') {
+      navigate('/')
+      return
+    }
+
+    navigate('/')
+  }
+
+  const getHeaderCenter = () => {
+    if (currentStep === 'READY') {
+      const parcelCount = plots.filter(p => p.boundary_geojson).length
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+          <span className="header-center-title">
+            Coimbatore District — Land Parcels
+          </span>
+          {loading ? (
+            <span className="spinner" />
+          ) : (
+            <span className="badge badge-blue">
+              {parcelCount} {parcelCount === 1 ? 'parcel' : 'parcels'}
+            </span>
+          )}
+        </div>
+      )
+    }
+
+    if (currentStep === 'DISTRICT' || currentStep === 'PANNING_CBE') {
+      return (
+        <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
+          Tamil Nadu › Select District
+        </span>
+      )
+    }
+
+    if (currentStep === 'STATE' || currentStep === 'PANNING_TN') {
+      return (
+        <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
+          India › Select State
+        </span>
+      )
+    }
+
+    return (
+      <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
+        Select Region
+      </span>
+    )
+  }
 
   // ── Render Polygons ──────────────────────────────────────────────────
   useEffect(() => {
@@ -209,18 +406,6 @@ export default function MapPage() {
 
     map.on('zoomend', updateLabels)
     updateLabels() // initial call
-
-    // Zoom map to fit all loaded parcels
-    const totalBounds = L.latLngBounds()
-    layersRef.current.forEach(({ layer }) => {
-      if (layer && layer.getBounds) {
-        totalBounds.extend(layer.getBounds())
-      }
-    })
-
-    if (totalBounds.isValid()) {
-      map.fitBounds(totalBounds, { padding: [50, 50], maxZoom: 22 })
-    }
 
     return () => {
       map.off('zoomend', updateLabels)
@@ -361,54 +546,31 @@ export default function MapPage() {
   // ── Render ────────────────────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      <Header />
-
-      {/* Top bar */}
-      <div style={{
-        background: 'var(--color-surface)',
-        borderBottom: '1px solid var(--color-border)',
-        padding: '0.5rem 1rem',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.75rem',
-        fontSize: '0.875rem',
-        color: 'var(--color-text-muted)',
-      }}>
-        <button
-          className="btn btn-outline btn-sm"
-          onClick={() => navigate('/navigate/view')}
-        >
-          ← Back
-        </button>
-        <span>Coimbatore District — Land Parcels</span>
-        {loading && <span className="spinner" />}
-        {!loading && (
-          <span className="badge badge-blue">{plots.filter(p => p.boundary_geojson).length} parcels</span>
-        )}
-      </div>
+      <Header onBack={handleBack} centerContent={getHeaderCenter()} />
 
       {/* Map + Panel */}
       <div style={{ flex: 1, display: 'flex', position: 'relative', overflow: 'hidden' }}>
 
         {/* Left Sidebar: Plot List */}
-        <div style={{
-          width: '300px',
-          flexShrink: 0,
-          background: 'var(--color-surface)',
-          borderRight: '1px solid var(--color-border)',
-          display: 'flex',
-          flexDirection: 'column',
-          zIndex: 10,
-        }}>
+        {currentStep === 'READY' && (
           <div style={{
-            padding: '1rem',
-            borderBottom: '1px solid var(--color-border)',
-            background: '#f8fafc',
-            fontWeight: '600',
-            fontSize: '0.95rem'
+            width: '300px',
+            flexShrink: 0,
+            background: 'var(--color-surface)',
+            borderRight: '1px solid var(--color-border)',
+            display: 'flex',
+            flexDirection: 'column',
+            zIndex: 10,
           }}>
-            Parcels in Region
-          </div>
+            <div style={{
+              padding: '1rem',
+              borderBottom: '1px solid var(--color-border)',
+              background: '#f8fafc',
+              fontWeight: '600',
+              fontSize: '0.95rem'
+            }}>
+              Parcels in Region
+            </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
             {plots.map(plot => {
               const isSelected = selectedPlot?.id === plot.id
@@ -450,6 +612,7 @@ export default function MapPage() {
             )}
           </div>
         </div>
+        )}
 
         {/* Map */}
         <div
@@ -685,6 +848,118 @@ export default function MapPage() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Selection Flow Modal Overlay */}
+        {isBlurOverlayVisible && (
+          <div className="map-backdrop-overlay">
+            {currentStep === 'REGION' && (
+              <div className="map-selection-card">
+                <div className="map-selection-header">
+                  <div className="map-selection-icon">
+                    <img src="/world.png" alt="World" />
+                  </div>
+                  <h2 className="map-selection-title">Select Region</h2>
+                  <p className="map-selection-subtitle">Choose a region to explore registered land parcels</p>
+                </div>
+                <div className="selection-option-list">
+                  <button
+                    className="selection-option-btn"
+                    onClick={handleSelectIndia}
+                    autoFocus
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                      <img src="/india-flag.png" alt="India" className="selection-option-img" />
+                      <span style={{ fontWeight: '600' }}>India</span>
+                    </span>
+                    <span style={{ color: 'var(--color-primary)', fontSize: '1.2rem', fontWeight: 'bold' }}>›</span>
+                  </button>
+                  <button
+                    className="selection-option-btn"
+                    onClick={() => {}}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                      <img src="/globe-small.png" alt="Overseas" className="selection-option-img" />
+                      <span style={{ fontWeight: '600' }}>Overseas</span>
+                    </span>
+                    <span style={{ color: 'var(--color-text-muted)', fontSize: '1.2rem', fontWeight: 'bold' }}>›</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {currentStep === 'STATE' && (
+              <div className="map-selection-card">
+                <div className="map-selection-header">
+                  <div className="map-selection-icon">
+                    <img src="/india.webp" alt="India" />
+                  </div>
+                  <h2 className="map-selection-title">Select State</h2>
+                  <p className="map-selection-subtitle">India • Choose state to view district boundaries</p>
+                </div>
+                <div className="selection-dropdown-wrapper">
+                  <label className="form-label" style={{ marginBottom: '0.5rem' }}>State</label>
+                  <select
+                    className="selection-select"
+                    value={selectedState}
+                    onChange={e => setSelectedState(e.target.value)}
+                  >
+                    <option value="Tamil Nadu">Tamil Nadu</option>
+                    {INDIA_STATES.filter(s => s !== 'Tamil Nadu').map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  className="btn btn-primary"
+                  style={{ width: '100%', justifyContent: 'center', padding: '0.85rem' }}
+                  onClick={() => {
+                    if (selectedState === 'Tamil Nadu') {
+                      handleSelectTamilNadu()
+                    }
+                  }}
+                >
+                  Continue to State →
+                </button>
+              </div>
+            )}
+
+            {currentStep === 'DISTRICT' && (
+              <div className="map-selection-card">
+                <div className="map-selection-header">
+                  <div className="map-selection-icon">
+                    <img src="/tamil-nadu.png" alt="Tamil Nadu" />
+                  </div>
+                  <h2 className="map-selection-title">Select District</h2>
+                  <p className="map-selection-subtitle">Tamil Nadu • Choose district to explore parcel registry</p>
+                </div>
+                <div className="selection-dropdown-wrapper">
+                  <label className="form-label" style={{ marginBottom: '0.5rem' }}>District</label>
+                  <select
+                    className="selection-select"
+                    value={selectedDistrict}
+                    onChange={e => setSelectedDistrict(e.target.value)}
+                  >
+                    <option value="Coimbatore">Coimbatore</option>
+                    {TN_DISTRICTS.filter(d => d !== 'Coimbatore').map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  className="btn btn-primary"
+                  style={{ width: '100%', justifyContent: 'center', padding: '0.85rem' }}
+                  onClick={() => {
+                    if (selectedDistrict === 'Coimbatore') {
+                      handleSelectCoimbatore()
+                    }
+                  }}
+                >
+                  Explore District Parcels →
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
