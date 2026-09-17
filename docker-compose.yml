@@ -26,7 +26,7 @@ services:
     restart: unless-stopped
 
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
     container_name: lpms_minio
     command: server /data --console-address ":9001"
     environment:
@@ -72,6 +72,7 @@ services:
       MINIO_SECRET_KEY: lpms_minio_password
       MINIO_BUCKET: lpms-documents
       MINIO_SECURE: "false"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     ports:
       - "8000:8000"
     volumes:
