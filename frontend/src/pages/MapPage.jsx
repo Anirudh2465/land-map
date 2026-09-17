@@ -6,24 +6,46 @@
  *  - Leaflet map with Esri World Imagery (satellite) tiles
  *  - All ACTIVE parcels rendered as GeoJSON polygons
  *  - Zoom-based labels: plot_number at zoom ≥ 14, property_name at zoom ≥ 16
- *  - Click a parcel → map pans to fit bounds → right info panel opens
- *  - Info panel: LandID, Name, Area, Coords, Location, Landmark, PDF buttons
+ *  - Click a parcel → map pans to fit bounds → left info panel opens
+ *  - Info panel: Details, Geography, Documents (Preview & Download)
  *  - PDF preview via iframe in a modal using presigned URLs
  */
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { getPlots, getPlot } from '../api/plots'
 import { getDocumentUrl } from '../api/documents'
-import { triggerOcr, translateDocument, getAiSummary } from '../api/ai'
 import { getNodeByName } from '../api/geo'
 import Header from '../components/Header'
+import { Search, ChevronDown, ChevronUp, X, FileText, Download, Eye, ChevronRight } from 'lucide-react'
+
+// Unit conversion constants
+const AREA_UNITS = ['sqm', 'sqft', 'acres', 'hectares']
+const UNIT_CONVERSION = {
+  sqm: 1,
+  sqft: 10.7639104,
+  acres: 0.000247105,
+  hectares: 0.0001
+}
+
+function convertAreaValue(val, fromUnit, toUnit) {
+  if (val === null || val === undefined || val === '' || isNaN(val)) return '—'
+  const numInSqm = parseFloat(val) / (UNIT_CONVERSION[fromUnit || 'sqm'] || 1)
+  const converted = numInSqm * (UNIT_CONVERSION[toUnit] || 1)
+  return Number.isInteger(converted) ? converted.toLocaleString() : parseFloat(converted.toFixed(4)).toLocaleString()
+}
+
+const DOC_CATEGORIES = {
+  land_documents: ['DEED', 'PARENT_DOCUMENT', 'FMB', 'PATTA', 'EC_DETAILS'],
+  buildup_details: ['BUILDING_PLAN', 'PLAN_APPROVAL', 'BUILDING_PERMIT'],
+  others: ['PROPERTY_TAX', 'AERIAL_PHOTO', 'DISPUTE_DETAILS']
+}
 
 // Coordinates and view constants
-const WORLD_VIEW = { center: [20, 20], zoom: 2 }
-const INDIA_VIEW = { center: [22.5, 79.5], zoom: 5 }
-const TN_VIEW = { center: [11.12, 78.65], zoom: 7.5 }
+const WORLD_VIEW = { center: [20, 20], zoom: 3.5 }
+const INDIA_VIEW = { center: [22.5, 79.5], zoom: 5.5 }
+const TN_VIEW = { center: [11.12, 78.65], zoom: 7.8 }
 
 // Coimbatore district approximate bounds [SW, NE]
 const CBE_BOUNDS = L.latLngBounds(
@@ -79,6 +101,7 @@ export default function MapPage() {
 
   const mapRef = useRef(null)
   const mapInstanceRef = useRef(null)
+  const labelsLayerRef = useRef(null)
   const layersRef = useRef([]) // { layer, plot, labelMarker }
   const selectedLayerRef = useRef(null)
 
@@ -96,11 +119,12 @@ export default function MapPage() {
   const [selectedDistrict, setSelectedDistrict] = useState('Coimbatore')
   const [activeDistrictId, setActiveDistrictId] = useState(districtId || null)
 
-  // AI State
-  const [ocrResults, setOcrResults] = useState({}) // { [docId]: { text, translatedText, translatedTo, loading } }
-  const [ocrLang, setOcrLang] = useState({}) // { [docId]: 'ta' }
-  const [aiSummary, setAiSummary] = useState(null)
-  const [aiSummaryLoading, setAiSummaryLoading] = useState(false)
+  // Floating Search & Side Panel Control States
+  const [searchQuery, setSearchQuery] = useState('')
+  const [isSearchOpen, setIsSearchOpen] = useState(false)
+  const [panelAreaUnit, setPanelAreaUnit] = useState('sqm')
+  const [addressViewMode, setAddressViewMode] = useState('db')
+  const [panelDocCategory, setPanelDocCategory] = useState('land_documents')
 
   // ── Init Map ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -112,7 +136,7 @@ export default function MapPage() {
     const map = L.map(mapRef.current, {
       center: initialCenter,
       zoom: initialZoom,
-      minZoom: 2,
+      minZoom: 3.5,
       maxZoom: 22,
       zoomControl: true,
     })
@@ -128,15 +152,18 @@ export default function MapPage() {
     ).addTo(map)
 
     // Esri World Boundaries and Places (labels + roads)
-    L.tileLayer(
+    const labelsLayer = L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
       {
         maxNativeZoom: 18,
         maxZoom: 22,
       }
-    ).addTo(map)
+    )
+    labelsLayerRef.current = labelsLayer
 
+    // Only add labels if already in READY step on initial load
     if (districtId) {
+      labelsLayer.addTo(map)
       map.fitBounds(CBE_BOUNDS, { padding: [20, 20] })
     }
 
@@ -146,8 +173,26 @@ export default function MapPage() {
     return () => {
       map.remove()
       mapInstanceRef.current = null
+      labelsLayerRef.current = null
     }
   }, [districtId])
+
+  // ── Dynamic Labels & Borders Toggle ──────────────────────────────────
+  useEffect(() => {
+    const map = mapInstanceRef.current
+    const labelsLayer = labelsLayerRef.current
+    if (!map || !labelsLayer) return
+
+    if (currentStep === 'READY') {
+      if (!map.hasLayer(labelsLayer)) {
+        labelsLayer.addTo(map)
+      }
+    } else {
+      if (map.hasLayer(labelsLayer)) {
+        map.removeLayer(labelsLayer)
+      }
+    }
+  }, [currentStep])
 
   // ── Load Plots ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -432,13 +477,12 @@ export default function MapPage() {
     selectedLayerRef.current = { layer: geoLayer }
 
     setSelectedPlot(plot)
-    setAiSummary(null) // Reset AI summary when changing plots
+    setAddressViewMode('db')
 
     // Wait for React to render the panel and physically resize the map container
     setTimeout(() => {
       if (mapInstanceRef.current) {
         mapInstanceRef.current.invalidateSize()
-        // Use flyTo for a guaranteed center zoom, instead of fitBounds which can fail if bounds are too small
         mapInstanceRef.current.flyTo(bounds.getCenter(), 18, {
           animate: true,
           duration: 1.5
@@ -463,7 +507,7 @@ export default function MapPage() {
     setSelectedPlot(null)
   }
 
-  // ── PDF Preview ───────────────────────────────────────────────────────
+  // ── PDF Preview & Download ───────────────────────────────────────────
   async function handlePreviewPdf(doc) {
     setPdfLoading(true)
     try {
@@ -476,377 +520,332 @@ export default function MapPage() {
     }
   }
 
-  const handleExtractText = async (doc) => {
-    setOcrResults(prev => ({ ...prev, [doc.id]: { ...prev[doc.id], loading: true } }))
-    try {
-      const res = await triggerOcr(doc.id)
-      setOcrResults(prev => ({
-        ...prev,
-        [doc.id]: { 
-          text: res.extracted_text, 
-          translatedText: res.translated_text, 
-          translatedTo: res.translated_to, 
-          loading: false 
-        }
-      }))
-    } catch (err) {
-      console.error(err)
-      alert('Failed to extract text. Make sure backend is running with Tesseract.')
-      setOcrResults(prev => ({ ...prev, [doc.id]: { ...prev[doc.id], loading: false } }))
-    }
-  }
-
-  const handleTranslate = async (doc) => {
-    const lang = ocrLang[doc.id] || 'ta'
-    setOcrResults(prev => ({ ...prev, [doc.id]: { ...prev[doc.id], loading: true } }))
-    try {
-      const res = await translateDocument(doc.id, lang)
-      setOcrResults(prev => ({
-        ...prev,
-        [doc.id]: { 
-          ...prev[doc.id],
-          translatedText: res.translated_text, 
-          translatedTo: res.translated_to, 
-          loading: false 
-        }
-      }))
-    } catch (err) {
-      console.error(err)
-      alert(err.response?.data?.detail || 'Translation failed.')
-      setOcrResults(prev => ({ ...prev, [doc.id]: { ...prev[doc.id], loading: false } }))
-    }
-  }
-
-  const handleGenerateSummary = async () => {
-    if (!selectedPlot) return
-    setAiSummaryLoading(true)
-    try {
-      const res = await getAiSummary(selectedPlot.id)
-      setAiSummary(res.summary_text)
-    } catch (err) {
-      console.error(err)
-      alert(err.response?.data?.detail || 'Failed to generate summary.')
-    } finally {
-      setAiSummaryLoading(false)
-    }
-  }
-
   async function handleDownloadPdf(doc) {
     try {
       const { url } = await getDocumentUrl(doc.id)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${selectedPlot.plot_number}_${doc.doc_type}.pdf`
-      a.click()
+      window.open(url, '_blank', 'noopener,noreferrer')
     } catch {
-      alert('Failed to generate download link.')
+      alert('Failed to generate document download link.')
     }
   }
+
+  const filteredPlots = plots.filter(plot => {
+    if (!searchQuery.trim()) return true
+    const q = searchQuery.toLowerCase().trim()
+    const pNum = (plot.plot_number || '').toLowerCase()
+    const pName = (plot.property_name || '').toLowerCase()
+    return pNum.includes(q) || pName.includes(q)
+  })
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <Header onBack={handleBack} centerContent={getHeaderCenter()} />
 
-      {/* Map + Panel */}
+      {/* Map + Left Info Panel + Top-Right Floating Search */}
       <div style={{ flex: 1, display: 'flex', position: 'relative', overflow: 'hidden' }}>
-
-        {/* Left Sidebar: Plot List */}
-        {currentStep === 'READY' && (
-          <div style={{
-            width: '300px',
-            flexShrink: 0,
-            background: 'var(--color-surface)',
-            borderRight: '1px solid var(--color-border)',
-            display: 'flex',
-            flexDirection: 'column',
-            zIndex: 10,
-          }}>
-            <div style={{
-              padding: '1rem',
-              borderBottom: '1px solid var(--color-border)',
-              background: '#f8fafc',
-              fontWeight: '600',
-              fontSize: '0.95rem'
-            }}>
-              Parcels in Region
-            </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
-            {plots.map(plot => {
-              const isSelected = selectedPlot?.id === plot.id
-              return (
-                <div
-                  key={plot.id}
-                  onClick={() => handleSelectPlotFromList(plot)}
-                  style={{
-                    padding: '0.75rem',
-                    border: '1px solid',
-                    borderColor: isSelected ? 'var(--color-primary)' : 'transparent',
-                    borderBottomColor: isSelected ? 'var(--color-primary)' : 'var(--color-border)',
-                    cursor: 'pointer',
-                    background: isSelected ? 'var(--color-primary-light)' : 'transparent',
-                    borderRadius: 'var(--radius)',
-                    marginBottom: '0.25rem',
-                    transition: 'all 0.15s ease'
-                  }}
-                  onMouseEnter={e => {
-                    if (!isSelected) e.currentTarget.style.background = '#f1f5f9'
-                  }}
-                  onMouseLeave={e => {
-                    if (!isSelected) e.currentTarget.style.background = 'transparent'
-                  }}
-                >
-                  <div style={{ fontWeight: '600', fontSize: '0.9rem', color: isSelected ? 'var(--color-primary)' : 'var(--color-text)' }}>
-                    {plot.plot_number || 'Parcel'}
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.15rem' }}>
-                    {plot.property_name || 'Unnamed Parcel'}
-                  </div>
-                </div>
-              )
-            })}
-            {plots.length === 0 && !loading && (
-              <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
-                No parcels found.
-              </div>
-            )}
-          </div>
-        </div>
-        )}
 
         {/* Map */}
         <div
           ref={mapRef}
-          style={{ flex: 1, height: '100%' }}
+          className={`map-container ${selectedPlot ? 'has-left-panel' : ''}`}
+          style={{ flex: 1, height: '100%', background: 'var(--map-bg-color, #0b0f19)' }}
         />
 
-        {/* Info Panel */}
+        {/* Top-Right Floating Search Bar */}
+        {currentStep === 'READY' && (
+          <div className="floating-search-container">
+            <div className="floating-search-bar">
+              <Search size={18} className="search-icon" />
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search parcel ID or name..."
+                value={searchQuery}
+                onChange={e => {
+                  setSearchQuery(e.target.value)
+                  if (!isSearchOpen) setIsSearchOpen(true)
+                }}
+                onFocus={() => setIsSearchOpen(true)}
+              />
+              {searchQuery && (
+                <button className="search-clear-btn" onClick={() => setSearchQuery('')} title="Clear search">
+                  <X size={14} />
+                </button>
+              )}
+              <button
+                className="search-toggle-btn"
+                onClick={() => setIsSearchOpen(!isSearchOpen)}
+                title={isSearchOpen ? 'Collapse list' : 'Expand list'}
+              >
+                {isSearchOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+              </button>
+            </div>
+
+            {isSearchOpen && (
+              <div className="search-dropdown-menu">
+                <div className="search-dropdown-header">
+                  <span>Parcels in Region ({filteredPlots.length})</span>
+                </div>
+                <div className="search-dropdown-list">
+                  {filteredPlots.map(plot => {
+                    const isSelected = selectedPlot?.id === plot.id
+                    return (
+                      <div
+                        key={plot.id}
+                        className={`search-item ${isSelected ? 'selected' : ''}`}
+                        onClick={() => {
+                          handleSelectPlotFromList(plot)
+                        }}
+                      >
+                        <div className="search-item-id">{plot.plot_number || 'Parcel'}</div>
+                        <div className="search-item-name">{plot.property_name || 'Unnamed Parcel'}</div>
+                      </div>
+                    )
+                  })}
+                  {filteredPlots.length === 0 && (
+                    <div className="search-empty">No matching parcels found</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Left Side Info Panel */}
         {selectedPlot && (
-          <div style={{
-            width: '360px',
-            flexShrink: 0,
-            background: 'var(--color-surface)',
-            borderLeft: '1px solid var(--color-border)',
-            overflowY: 'auto',
-            display: 'flex',
-            flexDirection: 'column',
-          }}>
-            {/* Panel Header */}
+          <div className="left-info-panel">
+            {/* Blue Header Bit */}
             <div style={{
-              padding: '1rem 1.25rem',
+              padding: '1.25rem',
               borderBottom: '1px solid var(--color-border)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              background: 'var(--color-primary)',
+              background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%)',
               color: '#fff',
             }}>
               <div>
-                <div style={{ fontWeight: '700', fontSize: '1.1rem' }}>
+                <div style={{ fontWeight: '700', fontSize: '1.2rem', letterSpacing: '-0.01em', lineHeight: '1.2' }}>
                   {selectedPlot.plot_number || 'Parcel'}
                 </div>
-                <div style={{ fontSize: '0.8rem', opacity: 0.85 }}>
+                <div style={{ fontSize: '0.85rem', opacity: 0.9, marginTop: '4px', fontWeight: '500', color: '#eff6ff' }}>
                   {selectedPlot.property_name || 'Unnamed Parcel'}
                 </div>
               </div>
               <button
                 onClick={handleClosePanel}
                 style={{
-                  background: 'rgba(255,255,255,0.2)',
+                  background: 'rgba(255,255,255,0.18)',
                   border: 'none',
                   color: '#fff',
                   borderRadius: '50%',
-                  width: '30px',
-                  height: '30px',
-                  fontSize: '1.1rem',
+                  width: '32px',
+                  height: '32px',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  transition: 'background 0.15s ease'
                 }}
                 aria-label="Close panel"
               >
-                ×
+                <X size={18} />
               </button>
             </div>
 
             {/* Panel Body */}
-            <div style={{ padding: '1.25rem', flex: 1 }}>
-              <InfoRow label="Land ID" value={selectedPlot.plot_number} />
-              <InfoRow label="Land Name" value={selectedPlot.property_name} />
-              <InfoRow
-                label="Area"
-                value={selectedPlot.area_value
-                  ? `${Number(selectedPlot.area_value).toLocaleString()} ${selectedPlot.area_unit || 'sqm'}`
-                  : null}
-              />
-              <InfoRow
-                label="Coordinates"
-                value={selectedPlot.lat && selectedPlot.lon
-                  ? `${selectedPlot.lat.toFixed(6)}, ${selectedPlot.lon.toFixed(6)}`
-                  : null}
-              />
-              <InfoRow label="Location" value={selectedPlot.location_name} />
-              <InfoRow label="Landmark" value={selectedPlot.landmark || '—'} />
+            <div style={{ padding: '1.25rem', flex: 1, overflowY: 'auto' }}>
+              {/* Section 1: Details */}
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <InfoRow label="Type" value={selectedPlot.plot_type} />
+                <InfoRow label="Year of Registration" value={selectedPlot.year_of_registration} />
+                <InfoRow label="Owner Name" value={selectedPlot.owner_name} />
 
-              {/* Documents */}
-              {selectedPlot.documents && selectedPlot.documents.length > 0 && (
-                <div style={{ marginTop: '1.25rem' }}>
-                  <div style={{
-                    fontSize: '0.75rem',
-                    fontWeight: '600',
-                    color: 'var(--color-text-muted)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.06em',
-                    marginBottom: '0.75rem',
-                  }}>
-                    Documents & AI Extraction
+                {/* Address / Map location */}
+                <div style={{ marginBottom: '0.85rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      {selectedPlot.address ? (addressViewMode === 'db' ? 'Address' : 'Map location') : 'Map location'}
+                    </span>
+                    {selectedPlot.address && (
+                      <button
+                        type="button"
+                        onClick={() => setAddressViewMode(v => v === 'db' ? 'map' : 'db')}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--color-primary)',
+                          fontSize: '0.725rem',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                          padding: 0,
+                          textDecoration: 'underline'
+                        }}
+                      >
+                        {addressViewMode === 'db' ? 'Switch to Map location' : 'Switch to Address'}
+                      </button>
+                    )}
                   </div>
-                  {selectedPlot.documents.map(doc => (
-                    <div key={doc.id} style={{
-                      padding: '0.75rem',
-                      background: 'var(--color-bg)',
-                      borderRadius: 'var(--radius)',
-                      marginBottom: '1rem',
-                      border: '1px solid var(--color-border)',
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                        <span style={{ fontSize: '0.875rem', fontWeight: '600' }}>
-                          📄 {doc.doc_type}
-                        </span>
-                        <div style={{ display: 'flex', gap: '0.4rem' }}>
-                          <button
-                            className="btn btn-outline btn-sm"
-                            onClick={() => handlePreviewPdf(doc)}
-                            disabled={pdfLoading}
-                          >
-                            Preview
-                          </button>
-                          <button
-                            className="btn btn-primary btn-sm"
-                            onClick={() => handleDownloadPdf(doc)}
-                          >
-                            ↓
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* OCR UI */}
-                      {!ocrResults[doc.id]?.text && (
-                        <button 
-                          className="btn btn-outline btn-sm" 
-                          style={{ width: '100%', fontSize: '0.75rem', marginTop: '0.25rem' }}
-                          onClick={() => handleExtractText(doc)}
-                          disabled={ocrResults[doc.id]?.loading}
-                        >
-                          {ocrResults[doc.id]?.loading ? 'Extracting Text...' : '✨ Extract Text with AI'}
-                        </button>
-                      )}
-
-                      {ocrResults[doc.id]?.text && (
-                        <div style={{ marginTop: '0.75rem', background: 'var(--color-surface)', padding: '0.75rem', borderRadius: '4px', fontSize: '0.8rem', border: '1px solid var(--color-border)' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', alignItems: 'center' }}>
-                            <span style={{ fontWeight: '600', color: 'var(--color-primary)' }}>Extracted Text</span>
-                            <div style={{ display: 'flex', gap: '0.25rem' }}>
-                              <select 
-                                style={{ fontSize: '0.7rem', padding: '2px' }}
-                                value={ocrLang[doc.id] || 'ta'}
-                                onChange={e => setOcrLang(prev => ({ ...prev, [doc.id]: e.target.value }))}
-                              >
-                                <option value="en">English</option>
-                                <option value="ta">Tamil</option>
-                                <option value="hi">Hindi</option>
-                              </select>
-                              <button 
-                                className="btn btn-primary btn-sm" 
-                                style={{ fontSize: '0.65rem', padding: '2px 6px' }}
-                                onClick={() => handleTranslate(doc)}
-                                disabled={ocrResults[doc.id]?.loading}
-                              >
-                                Translate
-                              </button>
-                            </div>
-                          </div>
-                          
-                          {ocrResults[doc.id].translatedText ? (
-                            <div style={{ maxHeight: '150px', overflowY: 'auto', whiteSpace: 'pre-wrap', color: 'var(--color-text)' }}>
-                              <strong style={{fontSize:'0.75rem'}}>Translation:</strong><br/>
-                              {ocrResults[doc.id].translatedText}
-                              <hr style={{margin: '0.5rem 0'}}/>
-                              <strong style={{fontSize:'0.75rem'}}>Original:</strong><br/>
-                              <span style={{ color: 'var(--color-text-muted)' }}>{ocrResults[doc.id].text}</span>
-                            </div>
-                          ) : (
-                            <div style={{ maxHeight: '150px', overflowY: 'auto', whiteSpace: 'pre-wrap', color: 'var(--color-text-muted)' }}>
-                              {ocrResults[doc.id].text}
-                            </div>
-                          )}
-                        </div>
-                      )}
+                  <div style={{ fontSize: '0.9rem', fontWeight: '500', color: 'var(--color-text)', whiteSpace: 'pre-wrap', lineHeight: '1.45' }}>
+                    {selectedPlot.address
+                      ? (addressViewMode === 'db' ? selectedPlot.address : (selectedPlot.location_name || '—'))
+                      : (selectedPlot.location_name || '—')}
+                  </div>
+                  {!selectedPlot.address && (
+                    <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic', marginTop: '0.25rem' }}>
+                      True address not found
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {(!selectedPlot.documents || selectedPlot.documents.length === 0) && (
-                <div style={{
-                  marginTop: '1.25rem',
-                  padding: '1rem',
-                  background: 'var(--color-bg)',
-                  borderRadius: 'var(--radius)',
-                  textAlign: 'center',
-                  color: 'var(--color-text-muted)',
-                  fontSize: '0.875rem',
-                }}>
-                  No documents uploaded yet.
-                </div>
-              )}
-
-              {/* AI Summary Section */}
-              {selectedPlot.documents && selectedPlot.documents.length > 0 && (
-                <div style={{ marginTop: '1.5rem', marginBottom: '2rem' }}>
-                  {!aiSummary && (
-                    <button 
-                      className="btn btn-primary" 
-                      style={{ width: '100%' }}
-                      onClick={handleGenerateSummary}
-                      disabled={aiSummaryLoading}
-                    >
-                      {aiSummaryLoading ? 'Generating Summary...' : '🧠 Generate Plot AI Summary'}
-                    </button>
                   )}
-                  {aiSummary && (
+                </div>
+
+                <InfoRow label="Landmark" value={selectedPlot.landmark} />
+              </div>
+
+              {/* Thin Horizontal Divider Line */}
+              <hr style={{ border: 'none', borderTop: '1px solid var(--color-border)', margin: '1.1rem 0' }} />
+
+              {/* Section 2: Geography */}
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <div style={{ marginBottom: '0.85rem' }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.2rem' }}>
+                    Coordinates
+                  </span>
+                  <span style={{ fontSize: '0.9rem', color: 'var(--color-text)', fontWeight: '500' }}>
+                    {selectedPlot.lat != null && selectedPlot.lon != null
+                      ? `${Math.abs(selectedPlot.lat).toFixed(6)}° ${selectedPlot.lat >= 0 ? 'N' : 'S'}, ${Math.abs(selectedPlot.lon).toFixed(6)}° ${selectedPlot.lon >= 0 ? 'E' : 'W'}`
+                      : '—'}
+                  </span>
+                </div>
+
+                <div style={{ marginBottom: '0.85rem' }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.35rem' }}>
+                    Area
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <div style={{
-                      background: 'linear-gradient(to right bottom, rgba(37,99,235,0.05), rgba(37,99,235,0.15))',
-                      border: '1px solid rgba(37,99,235,0.3)',
-                      borderRadius: 'var(--radius)',
-                      padding: '1rem',
+                      flex: 1,
+                      padding: '0 0.75rem',
+                      height: '38px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      background: '#f8fafc',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: '8px',
+                      fontWeight: '600',
+                      fontSize: '0.9rem',
+                      color: '#0f172a'
                     }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                        <h4 style={{ margin: 0, color: 'var(--color-primary)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                          <span>✨</span> AI Summary
-                        </h4>
-                        <button 
-                          style={{ background: 'none', border: 'none', color: 'var(--color-primary)', cursor: 'pointer', fontSize: '0.75rem' }}
-                          onClick={() => handleGenerateSummary()}
-                          disabled={aiSummaryLoading}
-                        >
-                          ↻ Refresh
-                        </button>
-                      </div>
-                      
-                      <div style={{ 
-                        fontSize: '0.85rem', 
-                        lineHeight: '1.5',
-                        color: 'var(--color-text)',
-                        whiteSpace: 'pre-wrap' 
-                      }}>
-                        {aiSummary}
-                      </div>
+                      {convertAreaValue(selectedPlot.area_value, selectedPlot.area_unit || 'sqm', panelAreaUnit)}
                     </div>
-                  )}
+                    <select
+                      className="form-input"
+                      style={{
+                        width: '105px',
+                        flexShrink: 0,
+                        fontWeight: '600',
+                        fontSize: '0.85rem',
+                        padding: '0 0.65rem',
+                        height: '38px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--color-border)',
+                        background: '#ffffff'
+                      }}
+                      value={panelAreaUnit}
+                      onChange={e => setPanelAreaUnit(e.target.value)}
+                    >
+                      {AREA_UNITS.map(u => (
+                        <option key={u} value={u}>{u}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              )}
+              </div>
+
+              {/* Thin Horizontal Divider Line */}
+              <hr style={{ border: 'none', borderTop: '1px solid var(--color-border)', margin: '1.1rem 0' }} />
+
+              {/* Section 3: Documents */}
+              <div>
+                <div style={{ marginBottom: '0.85rem' }}>
+                  <label style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.35rem' }}>
+                    Documents Category
+                  </label>
+                  <select
+                    className="form-input"
+                    style={{
+                      width: '100%',
+                      fontWeight: '600',
+                      fontSize: '0.875rem',
+                      padding: '0 0.75rem',
+                      height: '38px',
+                      borderRadius: '8px',
+                      border: '1px solid var(--color-border)',
+                      background: '#ffffff'
+                    }}
+                    value={panelDocCategory}
+                    onChange={e => setPanelDocCategory(e.target.value)}
+                  >
+                    <option value="land_documents">Land Documents</option>
+                    <option value="buildup_details">Build-up Details</option>
+                    <option value="others">Others</option>
+                  </select>
+                </div>
+
+                {/* Filtered documents list */}
+                {(() => {
+                  const allowedTypes = DOC_CATEGORIES[panelDocCategory] || []
+                  const categoryDocs = (selectedPlot.documents || []).filter(d => allowedTypes.includes(d.doc_type))
+
+                  if (categoryDocs.length === 0) {
+                    return (
+                      <div style={{ padding: '0.75rem 0', color: 'var(--color-text-muted)', fontSize: '0.85rem', fontStyle: 'italic' }}>
+                        No documents in this category.
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {categoryDocs.map(doc => (
+                        <div key={doc.id} style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '0.55rem 0.75rem',
+                          background: '#f8fafc',
+                          borderRadius: '8px',
+                          border: '1px solid var(--color-border)',
+                        }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.45rem', color: '#0f172a' }}>
+                            <FileText size={15} style={{ color: 'var(--color-primary)' }} />
+                            <span>{doc.doc_type}</span>
+                          </span>
+                          <div style={{ display: 'flex', gap: '0.35rem' }}>
+                            <button
+                              className="btn btn-outline btn-sm"
+                              onClick={() => handlePreviewPdf(doc)}
+                              disabled={pdfLoading}
+                              title="Preview PDF"
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px' }}
+                            >
+                              <Eye size={13} />
+                            </button>
+                            <button
+                              className="btn btn-primary btn-sm"
+                              onClick={() => handleDownloadPdf(doc)}
+                              title="Download PDF"
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px' }}
+                            >
+                              <Download size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })()}
+              </div>
             </div>
           </div>
         )}
@@ -873,7 +872,7 @@ export default function MapPage() {
                       <img src="/india-flag.png" alt="India" className="selection-option-img" />
                       <span style={{ fontWeight: '600' }}>India</span>
                     </span>
-                    <span style={{ color: 'var(--color-primary)', fontSize: '1.2rem', fontWeight: 'bold' }}>›</span>
+                    <ChevronRight size={18} style={{ color: 'var(--color-primary)' }} />
                   </button>
                   <button
                     className="selection-option-btn"
@@ -883,7 +882,7 @@ export default function MapPage() {
                       <img src="/globe-small.png" alt="Overseas" className="selection-option-img" />
                       <span style={{ fontWeight: '600' }}>Overseas</span>
                     </span>
-                    <span style={{ color: 'var(--color-text-muted)', fontSize: '1.2rem', fontWeight: 'bold' }}>›</span>
+                    <ChevronRight size={18} style={{ color: 'var(--color-text-muted)' }} />
                   </button>
                 </div>
               </div>
@@ -973,8 +972,9 @@ export default function MapPage() {
             onClick={e => e.stopPropagation()}
           >
             <div className="modal-header">
-              <span className="modal-title">
-                📄 {pdfModal.docType} Document
+              <span className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <FileText size={18} style={{ color: 'var(--color-primary)' }} />
+                <span>{pdfModal.docType} Document</span>
               </span>
               <button
                 className="btn btn-outline btn-sm"
@@ -1028,25 +1028,21 @@ export default function MapPage() {
 }
 
 function InfoRow({ label, value }) {
-  if (!value) return null
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '0.15rem',
-      marginBottom: '0.9rem',
-    }}>
+    <div style={{ marginBottom: '0.85rem' }}>
       <span style={{
         fontSize: '0.72rem',
-        fontWeight: '600',
+        fontWeight: '700',
         color: 'var(--color-text-muted)',
         textTransform: 'uppercase',
-        letterSpacing: '0.06em',
+        letterSpacing: '0.05em',
+        display: 'block',
+        marginBottom: '0.2rem'
       }}>
         {label}
       </span>
-      <span style={{ fontSize: '0.9rem', color: 'var(--color-text)', wordBreak: 'break-word' }}>
-        {value}
+      <span style={{ fontSize: '0.9rem', fontWeight: '500', color: 'var(--color-text)', wordBreak: 'break-word', display: 'block', lineHeight: '1.45' }}>
+        {value || '—'}
       </span>
     </div>
   )

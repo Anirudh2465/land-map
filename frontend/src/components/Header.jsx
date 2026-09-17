@@ -45,8 +45,18 @@ export default function Header({ onBack, showBack, centerContent }) {
 
   return (
     <header className="header">
-      {/* Left side: Back button + Logo + Title */}
+      {/* Left side: Logo + Title */}
       <div className="header-left">
+        <Link to="/" className="header-logo-link">
+          <img src="/logo.png" alt="LMW Logo" className="header-logo-img" />
+          <div className="header-brand-title">
+            LMW <span className="brand-sub">— Land Management System (LMS)</span>
+          </div>
+        </Link>
+      </div>
+
+      {/* Center: Integrated back button + region/parcel summary info centered together */}
+      <div className="header-center">
         {hasBack && (
           <button
             className="header-back-btn"
@@ -60,17 +70,6 @@ export default function Header({ onBack, showBack, centerContent }) {
             </svg>
           </button>
         )}
-
-        <Link to="/" className="header-logo-link">
-          <img src="/logo.png" alt="LMW Logo" className="header-logo-img" />
-          <div className="header-brand-title">
-            LMW <span className="brand-sub">— Land Management System (LMS)</span>
-          </div>
-        </Link>
-      </div>
-
-      {/* Center: Integrated region & parcel summary info */}
-      <div className="header-center">
         {centerContent}
       </div>
 
