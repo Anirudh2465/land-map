@@ -210,9 +210,9 @@ export default function MapPage() {
         totalBounds.extend(layer.getBounds())
       }
     })
-    
+
     if (totalBounds.isValid()) {
-      map.fitBounds(totalBounds, { padding: [50, 50], maxZoom: 18 })
+      map.fitBounds(totalBounds, { padding: [50, 50], maxZoom: 22 })
     }
 
     return () => {
@@ -313,7 +313,7 @@ export default function MapPage() {
       }}>
         <button
           className="btn btn-outline btn-sm"
-          onClick={() => navigate(-1)}
+          onClick={() => navigate('/navigate/view')}
         >
           ← Back
         </button>

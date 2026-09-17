@@ -48,10 +48,6 @@ export default function ManagePage() {
   const [form, setForm] = useState({
     land_id: '',
     land_name: '',
-    area_value: '',
-    area_unit: 'sqm',
-    lat: '',
-    lon: '',
     landmark: '',
   })
   const [kmlFile, setKmlFile] = useState(null)
@@ -83,7 +79,7 @@ export default function ManagePage() {
   }
 
   function resetForm() {
-    setForm({ land_id: '', land_name: '', area_value: '', area_unit: 'sqm', lat: '', lon: '', landmark: '' })
+    setForm({ land_id: '', land_name: '', landmark: '' })
     setKmlFile(null)
     setFmbFile(null)
     setPattaFile(null)
@@ -106,10 +102,6 @@ export default function ManagePage() {
       fd.append('district_id', districtId)
       fd.append('land_id', form.land_id.trim())
       fd.append('land_name', form.land_name.trim())
-      fd.append('area_value', parseFloat(form.area_value))
-      fd.append('area_unit', form.area_unit)
-      fd.append('lat', parseFloat(form.lat))
-      fd.append('lon', parseFloat(form.lon))
       if (form.landmark.trim()) fd.append('landmark', form.landmark.trim())
       fd.append('kml_file', kmlFile)
       if (fmbFile) fd.append('fmb_file', fmbFile)
@@ -127,29 +119,7 @@ export default function ManagePage() {
     }
   }
 
-  const [autofilling, setAutofilling] = useState(false)
-  async function handleAutofill() {
-    if (!kmlFile) {
-      setFormError('Please select a KML file first.')
-      return
-    }
-    setAutofilling(true)
-    setFormError('')
-    try {
-      const data = await extractKml(kmlFile)
-      setForm(f => ({
-        ...f,
-        area_value: data.area_sqm.toFixed(2),
-        area_unit: 'sqm',
-        lat: data.lat.toFixed(6),
-        lon: data.lon.toFixed(6),
-      }))
-    } catch (err) {
-      setFormError(err.response?.data?.detail || 'Failed to extract KML details.')
-    } finally {
-      setAutofilling(false)
-    }
-  }
+
 
   async function handleDelete(plotId) {
     try {
@@ -295,62 +265,7 @@ export default function ManagePage() {
                     </div>
                   </div>
 
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="f-area">Area *</label>
-                      <input
-                        id="f-area"
-                        className="form-input"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="0.00"
-                        value={form.area_value}
-                        onChange={e => handleFormChange('area_value', e.target.value)}
-                        required
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="f-area-unit">Unit *</label>
-                      <select
-                        id="f-area-unit"
-                        className="form-input"
-                        value={form.area_unit}
-                        onChange={e => handleFormChange('area_unit', e.target.value)}
-                      >
-                        {AREA_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                      </select>
-                    </div>
-                  </div>
 
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="f-lat">Latitude *</label>
-                      <input
-                        id="f-lat"
-                        className="form-input"
-                        type="number"
-                        step="0.000001"
-                        placeholder="11.0168"
-                        value={form.lat}
-                        onChange={e => handleFormChange('lat', e.target.value)}
-                        required
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="f-lon">Longitude *</label>
-                      <input
-                        id="f-lon"
-                        className="form-input"
-                        type="number"
-                        step="0.000001"
-                        placeholder="76.9558"
-                        value={form.lon}
-                        onChange={e => handleFormChange('lon', e.target.value)}
-                        required
-                      />
-                    </div>
-                  </div>
 
                   <div className="form-group">
                     <label className="form-label" htmlFor="f-landmark">
@@ -372,16 +287,7 @@ export default function ManagePage() {
                     onChange={setKmlFile}
                     fileName={kmlFile?.name}
                   />
-                  <div style={{ marginBottom: '1.5rem', marginTop: '-0.5rem', textAlign: 'right' }}>
-                    <button 
-                      type="button" 
-                      className="btn btn-outline btn-sm" 
-                      onClick={handleAutofill}
-                      disabled={!kmlFile || autofilling}
-                    >
-                      {autofilling ? 'Extracting...' : '🪄 Autofill Area, Latitude & Longitude from KML'}
-                    </button>
-                  </div>
+
                   {/*
                   <div style={{
                     padding: '0.75rem 1rem',

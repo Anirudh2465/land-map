@@ -142,10 +142,6 @@ async def create_plot(
     district_id: UUID = Form(...),
     land_id: str = Form(...),
     land_name: str = Form(...),
-    area_value: float = Form(...),
-    area_unit: str = Form("sqm"),
-    lat: float = Form(...),
-    lon: float = Form(...),
     landmark: Optional[str] = Form(None),
     kml_file: UploadFile = File(...),
     fmb_file: Optional[UploadFile] = File(None),
@@ -179,20 +175,23 @@ async def create_plot(
     kml_key = f"kml/{plot_id}.kml"
     upload_file(kml_key, kml_bytes, content_type="application/vnd.google-earth.kml+xml")
 
-    boundary_wkt = None
-    centroid_lat, centroid_lon = lat, lon  # fallback to user-entered coords
-
     try:
         parsed = extract_polygon_from_kml(kml_bytes)
         boundary_wkt = parsed["wkt"]
         centroid_lat = parsed["centroid_lat"]
         centroid_lon = parsed["centroid_lon"]
     except Exception as e:
-        # KML parse failure is non-fatal: plot created without geometry
-        print(f"⚠️  KML parse warning for {plot_id}: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to parse KML: {e}")
+
+    # Calculate exact area in square meters using PostGIS geography casting
+    from sqlalchemy import text
+    query = text("SELECT ST_Area(ST_GeomFromText(:wkt, 4326)::geography)")
+    result = db.execute(query, {"wkt": boundary_wkt}).scalar()
+    area_value = float(result) if result else 0.0
+    area_unit = "sqm"
 
     # ── Reverse geocode ───────────────────────────────────────────────────
-    location_name = await _reverse_geocode(lat, lon)
+    location_name = await _reverse_geocode(centroid_lat, centroid_lon)
 
     # ── Build PostGIS geometry ────────────────────────────────────────────
     boundary_geom = None
@@ -213,8 +212,8 @@ async def create_plot(
         plot_number=land_id,
         area_value=area_value,
         area_unit=area_unit,
-        lat=lat,
-        lon=lon,
+        lat=centroid_lat,
+        lon=centroid_lon,
         location_name=location_name,
         landmark=landmark,
         boundary=boundary_geom,
