@@ -177,7 +177,6 @@ export default function MapPage() {
       })
       geoLayer.on('click', () => {
         handleSelectPlot(plot, geoLayer, bounds)
-        geoLayer.openPopup()
       })
 
       layersRef.current.push({ layer: geoLayer, labelMarker, plot })
@@ -219,15 +218,22 @@ export default function MapPage() {
     geoLayer.setStyle(PARCEL_SELECTED_STYLE)
     selectedLayerRef.current = { layer: geoLayer }
 
-    // Pan map to fit bounds with padding for info panel
-    mapInstanceRef.current.fitBounds(bounds, {
-      paddingTopLeft: [20, 20],
-      paddingBottomRight: [380, 20], // leave room for info panel on right
-      maxZoom: 21,
-    })
-
-    // Show basic info immediately, then fetch full detail (with documents)
     setSelectedPlot(plot)
+
+    // Wait for React to render the panel and physically resize the map container
+    setTimeout(() => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize()
+        mapInstanceRef.current.fitBounds(bounds, {
+          padding: [50, 50], 
+          maxZoom: 21,
+          animate: true,
+          duration: 1
+        })
+      }
+    }, 100)
+
+    // Fetch full detail (with documents)
     try {
       const detail = await getPlot(plot.id)
       setSelectedPlot(detail)
