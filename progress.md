@@ -36,6 +36,18 @@
 │   ├── requirements.txt                 # Python package dependencies
 │   └── seed.py                          # Idempotent script that seeds the admin user and Coimbatore hierarchy
 ├── data/                                # Sample Data for Testing
+│   ├── provided/                        # Officially provided dataset
+│   │   ├── suganya.kml                  # Real-world plot KML
+│   │   └── docs/                        # Extensive official documents
+│   │       ├── Suganya_Aerial_Photo.pdf
+│   │       ├── Suganya_EC_document.pdf
+│   │       ├── Suganya_FMB_sketch.pdf
+│   │       ├── Suganya_Plan_approval.pdf
+│   │       ├── Suganya_building_Drawing.pdf
+│   │       ├── Suganya_buildingpermit.pdf
+│   │       ├── Suganya_deed.pdf
+│   │       ├── Suganya_parent_document.pdf
+│   │       └── Suganya_patta_chitta.pdf
 │   └── samples/
 │       ├── Gandhipuram_Plot_B.kml       # Sample plot KML file
 │       ├── Irugur_Plot_A.kml            # Sample plot KML file
@@ -198,6 +210,16 @@
 - **Tests to Run:** Comprehensive end-to-end regression tests, high-concurrency load testing on vector tiles.
 - **Exit Criteria:** The system handles production-level load with no rate limiting, running entirely on paid/managed cloud infrastructure.
 
+### Phase UI/UX Housekeeping and Upgrades
+- **Goal:** Professionalize the platform's visual design and standardize user experience across all modules.
+- **Detailed Features to Implement:**
+  - Modernize aesthetics utilizing a central `index.css` for shared glassmorphism and backdrop overlays.
+  - Apply dynamic blurred satellite backgrounds for data management modules (`ManagePage`, `NavigatorPage`).
+  - Standardize headers, auth flow presentation, and action card vector icons on the `HomePage`.
+  - Fix modal z-index clipping and ensure form control accessibility within layered UI contexts.
+- **Exit Criteria:** The UI feels robust, consistent, and premium with no overlapping or clipping issues.
+
+
 ---
 
 ## Phases Done
@@ -206,6 +228,7 @@
 - Phase 2 (MVP scope)
 - Phase 3 (MVP scope)
 - Phase 4 (MVP scope)
+- Phase UI/UX Housekeeping and Upgrades
 
 ## Phases Left
 - Phase 5
@@ -244,3 +267,9 @@
 - Documents API: GET /documents/{doc_id}/url returns 1-hour presigned URL.
 - Info panel in MapPage: LandID, Name, Area, Coordinates, Location (Nominatim), Landmark, + Preview/Download per document.
 - PDF preview via iframe modal using presigned URL (native browser PDF rendering).
+
+### Phase UI/UX Housekeeping and Upgrades
+- Overhauled `ManagePage.jsx` and `NavigatorPage.jsx` with unified dark blurred satellite backgrounds and glassmorphism.
+- Standardized modal behavior across the application (`index.css`) with safely tuned z-indices and dynamic `max-height` constraints.
+- Updated `HomePage.jsx` with premium SVG action cards and unified `LoginPage.jsx` presentation.
+- Fixed UX glitches including header clipping in `MapPage.jsx` and multiline textarea selection issues in modals.

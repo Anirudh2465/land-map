@@ -48,12 +48,9 @@ To evaluate the parcel ingestion workflow, sample data has been provided in the 
 2. Drill down through the hierarchy: **India** → **Tamil Nadu** → **Coimbatore**.
 3. Click **+ Add New Parcel** to open the registration form.
 4. Input a unique Land ID (e.g., `CB1`) and a Land Name.
-5. In the **KML File** section, upload one of the provided sample files located at `data/samples/`:
-   - `Gandhipuram_Plot_B.kml`
-   - `Irugur_Plot_A.kml`
-   - `Podanur_Plot_C_Large.kml`
+5. In the **KML File** section, upload a file from the officially provided dataset in `data/provided/` (e.g., `suganya.kml`) or from the `data/samples/` directory.
 6. Click the **"Autofill Details from KML"** button. The system will parse the KML file and automatically populate the exact metric Area, Latitude, and Longitude.
-7. Upload the sample PDF documents located in `data/samples/docs/` into the corresponding FMB, Patta, and Deed fields.
+7. Upload the corresponding PDF documents located in `data/provided/docs/` (which contains an extensive set of official documents such as EC, Plan Approval, Building Permit, etc.) or `data/samples/docs/` into the relevant fields.
 8. Submit the form. Repeat this process for the remaining sample files.
 
 ### 2. Viewing the Interactive Map
