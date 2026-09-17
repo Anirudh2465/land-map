@@ -234,10 +234,10 @@
 - react-router-dom routing added. AuthContext with JWT localStorage management.
 ### Phase 3 (MVP)
 - kml_parser.py: stdlib xml.etree + Shapely KML → WKT + GeoJSON extractor.
-- Plots API: GET /plots?district_id, GET /plots/{id}, POST /plots (multipart + KML parsing + Nominatim geocoding), DELETE /plots/{id} (soft delete).
+- Plots API: GET /plots?district_id, GET /plots/{id}, POST /plots (multipart + KML parsing + Nominatim geocoding + PostGIS ST_Area calculations), DELETE /plots/{id} (soft delete).
 - Plot model updated: landmark, lat, lon, location_name fields added; boundary made nullable.
-- MapPage: Leaflet satellite map (Esri World Imagery), GeoJSON polygon overlays, zoom-based ID/name labels (ID at zoom ≥14, name at zoom ≥16), click-to-select with map pan-to-fit.
-- ManagePage: parcel list table, Add New Parcel modal (all fields + KML + PDF uploads), delete confirmation.
+- MapPage: Leaflet satellite map (Esri World Imagery), GeoJSON polygon overlays, zoom-based ID/name labels. Added a left sidebar to list parcels for easy selection, optimized `flyTo` for guaranteed zooming directly to the parcel center, and added auto-zooming logic to perfectly fit all loaded parcels into the viewport.
+- ManagePage: Parcel list table, Add New Parcel modal (KML + PDF uploads). Completely automated Latitude, Longitude, and Area calculations upon KML upload without manual input.
 ### Phase 4 (MVP)
 - MinIO object storage integrated (minio_client.py).
 - PDFs uploaded to MinIO at documents/{plot_id}/{DOC_TYPE}.pdf.
