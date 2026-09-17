@@ -224,14 +224,13 @@ export default function MapPage() {
     setTimeout(() => {
       if (mapInstanceRef.current) {
         mapInstanceRef.current.invalidateSize()
-        mapInstanceRef.current.fitBounds(bounds, {
-          padding: [50, 50], 
-          maxZoom: 21,
+        // Use flyTo for a guaranteed center zoom, instead of fitBounds which can fail if bounds are too small
+        mapInstanceRef.current.flyTo(bounds.getCenter(), 20, {
           animate: true,
-          duration: 1
+          duration: 1.5
         })
       }
-    }, 100)
+    }, 150)
 
     // Fetch full detail (with documents)
     try {
