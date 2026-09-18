@@ -155,6 +155,7 @@ export default function MapPage() {
   const [isFetchingNearby, setIsFetchingNearby] = useState(false)
   const [nearbyError, setNearbyError] = useState('')
   const [expandedNearbyPlaceId, setExpandedNearbyPlaceId] = useState(null)
+  const [nearbyRadius, setNearbyRadius] = useState(2000)
   const nearbyLayerRef = useRef(null)
 
   const clearRouteAndNearby = () => {
@@ -833,44 +834,48 @@ export default function MapPage() {
     }
   }
 
-  const handleFetchNearby = async (category) => {
+  const handleFetchNearby = async (category, radiusOverride = null) => {
     if (!selectedPlot || selectedPlot.lat == null || selectedPlot.lon == null) return
     setNearbyCategory(category)
     setNearbyError('')
     setIsFetchingNearby(true)
+    const radiusToUse = radiusOverride !== null ? radiusOverride : nearbyRadius
     
     try {
-      const res = await getNearbyPlaces(selectedPlot.lat, selectedPlot.lon, 2000, category)
+      const res = await getNearbyPlaces(selectedPlot.lat, selectedPlot.lon, radiusToUse, category)
       const elements = res.elements || []
       setNearbyPlaces(elements)
       
       if (nearbyLayerRef.current) {
         mapInstanceRef.current.removeLayer(nearbyLayerRef.current)
+        nearbyLayerRef.current = null
       }
       
-      const markers = elements.map(el => {
-        let addressStr = ''
-        if (el.tags?.['addr:street']) addressStr += el.tags['addr:street']
-        if (el.tags?.['addr:city']) addressStr += (addressStr ? ', ' : '') + el.tags['addr:city']
+      if (elements.length > 0) {
+        const markers = elements.map(el => {
+          let addressStr = ''
+          if (el.tags?.['addr:street']) addressStr += el.tags['addr:street']
+          if (el.tags?.['addr:city']) addressStr += (addressStr ? ', ' : '') + el.tags['addr:city']
+          
+          const distTo = L.latLng(el.lat, el.lon).distanceTo(L.latLng(selectedPlot.lat, selectedPlot.lon))
+          const distStr = distTo > 1000 ? (distTo / 1000).toFixed(1) + ' km away' : Math.round(distTo) + ' m away'
+          
+          return L.marker([el.lat, el.lon]).bindPopup(
+            `<div style="font-family: inherit;">
+              <div style="font-weight: 700; font-size: 14px; margin-bottom: 2px;">${el.tags?.name || 'Unnamed ' + category}</div>
+              <div style="font-size: 12px; color: #475569; margin-bottom: 4px;">${category} • ${distStr}</div>
+              ${addressStr ? `<div style="font-size: 11px; color: #64748b;">${addressStr}</div>` : ''}
+            </div>`
+          )
+        })
         
-        const distTo = L.latLng(el.lat, el.lon).distanceTo(L.latLng(selectedPlot.lat, selectedPlot.lon))
-        const distStr = distTo > 1000 ? (distTo / 1000).toFixed(1) + ' km away' : Math.round(distTo) + ' m away'
+        const group = L.featureGroup(markers)
+        group.addTo(mapInstanceRef.current)
+        nearbyLayerRef.current = group
         
-        return L.marker([el.lat, el.lon]).bindPopup(
-          `<div style="font-family: inherit;">
-            <div style="font-weight: 700; font-size: 14px; margin-bottom: 2px;">${el.tags?.name || 'Unnamed ' + category}</div>
-            <div style="font-size: 12px; color: #475569; margin-bottom: 4px;">${category} • ${distStr}</div>
-            ${addressStr ? `<div style="font-size: 11px; color: #64748b;">${addressStr}</div>` : ''}
-          </div>`
-        )
-      })
-      
-      const group = L.featureGroup(markers)
-      group.addTo(mapInstanceRef.current)
-      nearbyLayerRef.current = group
-      
-      group.addLayer(L.marker([selectedPlot.lat, selectedPlot.lon]))
-      mapInstanceRef.current.fitBounds(group.getBounds(), { padding: [50, 50] })
+        group.addLayer(L.marker([selectedPlot.lat, selectedPlot.lon]))
+        mapInstanceRef.current.fitBounds(group.getBounds(), { padding: [50, 50] })
+      }
       
     } catch (err) {
       console.error(err)
@@ -1378,7 +1383,22 @@ export default function MapPage() {
               {activePanelTab === 'nearby' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <h3 style={{ fontSize: '0.9rem', fontWeight: '700', color: 'var(--color-text)', margin: 0 }}>Explore Nearby (2km)</h3>
+                    <h3 style={{ fontSize: '0.9rem', fontWeight: '700', color: 'var(--color-text)', margin: 0 }}>Explore Nearby</h3>
+                    <select
+                      className="form-input"
+                      value={nearbyRadius}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10)
+                        setNearbyRadius(val)
+                        if (nearbyCategory) handleFetchNearby(nearbyCategory, val)
+                      }}
+                      style={{ fontSize: '0.75rem', padding: '0.25rem 1.5rem 0.25rem 0.5rem', height: 'auto', borderRadius: '6px' }}
+                    >
+                      <option value={1000}>1 km</option>
+                      <option value={2000}>2 km</option>
+                      <option value={5000}>5 km</option>
+                      <option value={10000}>10 km</option>
+                    </select>
                   </div>
                   
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
@@ -1459,7 +1479,7 @@ export default function MapPage() {
 
                   {!isFetchingNearby && nearbyCategory && nearbyPlaces.length === 0 && (
                      <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
-                       No {nearbyCategory.toLowerCase()}s found within 2km.
+                       No {nearbyCategory.toLowerCase()}s found within {nearbyRadius >= 1000 ? nearbyRadius/1000 + 'km' : nearbyRadius + 'm'}.
                      </div>
                   )}
                 </div>
