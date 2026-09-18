@@ -17,8 +17,9 @@ import 'leaflet/dist/leaflet.css'
 import { getPlots, getPlot } from '../api/plots'
 import { getDocumentUrl } from '../api/documents'
 import { getNodeByName, getCountries, getChildren } from '../api/geo'
+import { geocodeAddress, getRoute, getNearbyPlaces } from '../api/routing'
 import Header from '../components/Header'
-import { Search, ChevronDown, ChevronUp, X, FileText, Download, Eye, ChevronRight } from 'lucide-react'
+import { Search, ChevronDown, ChevronUp, X, FileText, Download, Eye, ChevronRight, MapPin, Navigation, ArrowLeftRight, Map as MapIcon, Clock, Car, Bike, Footprints } from 'lucide-react'
 
 // Unit conversion constants
 const AREA_UNITS = ['sqm', 'sqft', 'acres', 'hectares']
@@ -132,6 +133,145 @@ export default function MapPage() {
   const [addressViewMode, setAddressViewMode] = useState('db')
   const [panelDocCategory, setPanelDocCategory] = useState('land_documents')
 
+  // Routing & Nearby state
+  const [activePanelTab, setActivePanelTab] = useState('details') // 'details' | 'directions' | 'nearby'
+  
+  const [dirFrom, setDirFrom] = useState('')
+  const [dirTo, setDirTo] = useState('Plot')
+  const [isDirToPlot, setIsDirToPlot] = useState(true)
+  const [routeData, setRouteData] = useState(null)
+  const [isRouting, setIsRouting] = useState(false)
+  const [travelMode, setTravelMode] = useState('driving')
+  const [routeError, setRouteError] = useState('')
+  const routeLayerRef = useRef(null)
+
+  const [geocodeResults, setGeocodeResults] = useState([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [isGeocoding, setIsGeocoding] = useState(false)
+  const [selectedDestCoords, setSelectedDestCoords] = useState(null)
+
+  const [nearbyCategory, setNearbyCategory] = useState('')
+  const [nearbyPlaces, setNearbyPlaces] = useState([])
+  const [isFetchingNearby, setIsFetchingNearby] = useState(false)
+  const [nearbyError, setNearbyError] = useState('')
+  const [expandedNearbyPlaceId, setExpandedNearbyPlaceId] = useState(null)
+  const nearbyLayerRef = useRef(null)
+
+  const clearRouteAndNearby = () => {
+    if (routeLayerRef.current) {
+      mapInstanceRef.current?.removeLayer(routeLayerRef.current)
+      routeLayerRef.current = null
+    }
+    if (nearbyLayerRef.current) {
+      mapInstanceRef.current?.removeLayer(nearbyLayerRef.current)
+      nearbyLayerRef.current = null
+    }
+    setRouteData(null)
+    setNearbyPlaces([])
+    setNearbyCategory('')
+    setDirFrom('')
+  }
+
+  useEffect(() => {
+    if (mapInstanceRef.current) {
+      if (activePanelTab === 'directions') {
+        if (routeLayerRef.current && !mapInstanceRef.current.hasLayer(routeLayerRef.current)) {
+          routeLayerRef.current.addTo(mapInstanceRef.current)
+        }
+        if (nearbyLayerRef.current && mapInstanceRef.current.hasLayer(nearbyLayerRef.current)) {
+          nearbyLayerRef.current.removeFrom(mapInstanceRef.current)
+        }
+      } else if (activePanelTab === 'nearby') {
+        if (routeLayerRef.current && mapInstanceRef.current.hasLayer(routeLayerRef.current)) {
+          routeLayerRef.current.removeFrom(mapInstanceRef.current)
+        }
+        if (nearbyLayerRef.current && !mapInstanceRef.current.hasLayer(nearbyLayerRef.current)) {
+          nearbyLayerRef.current.addTo(mapInstanceRef.current)
+        }
+      } else {
+        if (routeLayerRef.current && mapInstanceRef.current.hasLayer(routeLayerRef.current)) {
+          routeLayerRef.current.removeFrom(mapInstanceRef.current)
+        }
+        if (nearbyLayerRef.current && mapInstanceRef.current.hasLayer(nearbyLayerRef.current)) {
+          nearbyLayerRef.current.removeFrom(mapInstanceRef.current)
+        }
+      }
+    }
+  }, [activePanelTab])
+
+  const handleClickNearbyPlace = (el) => {
+    if (!mapInstanceRef.current) return
+    mapInstanceRef.current.setView([el.lat, el.lon], 16)
+    
+    if (expandedNearbyPlaceId === el.id) {
+      setExpandedNearbyPlaceId(null)
+    } else {
+      setExpandedNearbyPlaceId(el.id)
+    }
+
+    if (nearbyLayerRef.current) {
+      nearbyLayerRef.current.eachLayer(layer => {
+        if (layer.getLatLng && typeof layer.getLatLng === 'function') {
+          const latlng = layer.getLatLng()
+          if (latlng.lat === el.lat && latlng.lng === el.lon) {
+            layer.openPopup()
+          }
+        }
+      })
+    }
+  }
+
+  const handleRouteToNearby = (el) => {
+    setDirFrom(selectedPlot.plot_number || "Plot")
+    setIsDirToPlot(false)
+    setDirTo(el.tags?.name || "Destination")
+    setSelectedDestCoords({ lat: el.lat, lng: el.lon })
+    setActivePanelTab('directions')
+  }
+
+  const handleAddressInputChange = (e) => {
+    const val = e.target.value
+    setDirFrom(val)
+    setSelectedDestCoords(null)
+    
+    if (!val.trim()) {
+      setGeocodeResults([])
+      setShowSuggestions(false)
+      return
+    }
+    
+    if (window.geocodeTimeout) clearTimeout(window.geocodeTimeout)
+    window.geocodeTimeout = setTimeout(async () => {
+      setIsGeocoding(true)
+      try {
+        const res = await geocodeAddress(val, selectedPlot?.lat, selectedPlot?.lon)
+        let results = res || []
+        
+        if (results.length > 0 && selectedPlot && selectedPlot.lat != null && selectedPlot.lon != null) {
+          const plotLL = L.latLng(selectedPlot.lat, selectedPlot.lon)
+          results.forEach(item => {
+             item.distanceToPlot = L.latLng(parseFloat(item.lat), parseFloat(item.lon)).distanceTo(plotLL)
+          })
+          results.sort((a, b) => a.distanceToPlot - b.distanceToPlot)
+        }
+        
+        setGeocodeResults(results)
+        setShowSuggestions(true)
+      } catch (err) {
+        console.error("Geocode error", err)
+      } finally {
+        setIsGeocoding(false)
+      }
+    }, 600)
+  }
+
+  const handleSelectSuggestion = (item) => {
+    setDirFrom(item.display_name)
+    setSelectedDestCoords({ lat: parseFloat(item.lat), lng: parseFloat(item.lon) })
+    setShowSuggestions(false)
+  }
+
+
   // ── Init Map ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (mapInstanceRef.current) return // Already initialized
@@ -227,6 +367,17 @@ export default function MapPage() {
       })
     }
   }, [currentStep, plots])
+
+  // ── Plot Selection ─────────────────────────────────────────────────────
+  const selectPlot = (plot) => {
+    setSelectedPlot(plot)
+    setActivePanelTab('details')
+    clearRouteAndNearby()
+    setAddressViewMode('db')
+    setPanelAreaUnit('sqm')
+    setPanelDocCategory('land_documents')
+    setIsSearchOpen(false)
+  }
 
   // ── Load Plots ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -567,16 +718,16 @@ export default function MapPage() {
   }
 
   function handleClosePanel() {
+    setSelectedPlot(null)
+    clearRouteAndNearby()
     if (selectedLayerRef.current) {
       selectedLayerRef.current.layer.setStyle(PARCEL_STYLE)
       selectedLayerRef.current = null
     }
-    setSelectedPlot(null)
   }
 
   // ── PDF Preview & Download ───────────────────────────────────────────
   async function handlePreviewPdf(doc) {
-    setPdfLoading(true)
     try {
       const { url } = await getDocumentUrl(doc.id)
       setPdfModal({ url, docType: doc.doc_type })
@@ -593,6 +744,128 @@ export default function MapPage() {
       window.open(url, '_blank', 'noopener,noreferrer')
     } catch {
       alert('Failed to generate document download link.')
+    }
+  }
+
+  // ── Routing & Nearby ──────────────────────────────────────────────────
+  const handleFetchRoute = async () => {
+    if (!selectedPlot || selectedPlot.lat == null || selectedPlot.lon == null) return
+    const inputAddress = isDirToPlot ? dirFrom : dirTo
+    if (!inputAddress.trim()) return
+    
+    setIsRouting(true)
+    setRouteError('')
+    try {
+      let addrLat, addrLng
+      
+      if (selectedDestCoords) {
+        addrLat = selectedDestCoords.lat
+        addrLng = selectedDestCoords.lng
+      } else {
+        const geoRes = await geocodeAddress(inputAddress, selectedPlot?.lat, selectedPlot?.lon)
+        if (!geoRes || geoRes.length === 0) {
+          setRouteError('Could not find that address.')
+          setIsRouting(false)
+          return
+        }
+        addrLat = parseFloat(geoRes[0].lat)
+        addrLng = parseFloat(geoRes[0].lon)
+      }
+      
+      const pLat = selectedPlot.lat
+      const pLng = selectedPlot.lon
+      
+      const startLat = isDirToPlot ? addrLat : pLat
+      const startLng = isDirToPlot ? addrLng : pLng
+      const endLat = isDirToPlot ? pLat : addrLat
+      const endLng = isDirToPlot ? pLng : addrLng
+      
+      const routeRes = await getRoute(startLat, startLng, endLat, endLng, travelMode)
+      const route = routeRes.routes[0]
+      
+      // Adjust duration based on travel mode (since public OSRM routes often default to driving times)
+      const dist = route.distance // in meters
+      if (travelMode === 'foot') {
+        route.duration = dist / 1.4 // ~5 km/h
+      } else if (travelMode === 'cycling') {
+        route.duration = dist / 4.1 // ~15 km/h
+      }
+      
+      setRouteData(route)
+      
+      if (routeLayerRef.current) {
+        mapInstanceRef.current.removeLayer(routeLayerRef.current)
+      }
+      
+      const geojsonLayer = L.geoJSON(route.geometry, {
+        style: {
+          color: '#ef4444',
+          weight: 5,
+          opacity: 0.8
+        }
+      })
+      
+      const startMarker = L.marker([startLat, startLng], { title: 'Start' })
+      const endMarker = L.marker([endLat, endLng], { title: 'End' })
+      
+      const featureGroup = L.featureGroup([geojsonLayer, startMarker, endMarker])
+      featureGroup.addTo(mapInstanceRef.current)
+      routeLayerRef.current = featureGroup
+      
+      mapInstanceRef.current.fitBounds(featureGroup.getBounds(), { padding: [50, 50] })
+      
+    } catch (err) {
+      console.error(err)
+      setRouteError('Failed to calculate route.')
+    } finally {
+      setIsRouting(false)
+    }
+  }
+
+  const handleFetchNearby = async (category) => {
+    if (!selectedPlot || selectedPlot.lat == null || selectedPlot.lon == null) return
+    setNearbyCategory(category)
+    setNearbyError('')
+    setIsFetchingNearby(true)
+    
+    try {
+      const res = await getNearbyPlaces(selectedPlot.lat, selectedPlot.lon, 2000, category)
+      const elements = res.elements || []
+      setNearbyPlaces(elements)
+      
+      if (nearbyLayerRef.current) {
+        mapInstanceRef.current.removeLayer(nearbyLayerRef.current)
+      }
+      
+      const markers = elements.map(el => {
+        let addressStr = ''
+        if (el.tags?.['addr:street']) addressStr += el.tags['addr:street']
+        if (el.tags?.['addr:city']) addressStr += (addressStr ? ', ' : '') + el.tags['addr:city']
+        
+        const distTo = L.latLng(el.lat, el.lon).distanceTo(L.latLng(selectedPlot.lat, selectedPlot.lon))
+        const distStr = distTo > 1000 ? (distTo / 1000).toFixed(1) + ' km away' : Math.round(distTo) + ' m away'
+        
+        return L.marker([el.lat, el.lon]).bindPopup(
+          `<div style="font-family: inherit;">
+            <div style="font-weight: 700; font-size: 14px; margin-bottom: 2px;">${el.tags?.name || 'Unnamed ' + category}</div>
+            <div style="font-size: 12px; color: #475569; margin-bottom: 4px;">${category} • ${distStr}</div>
+            ${addressStr ? `<div style="font-size: 11px; color: #64748b;">${addressStr}</div>` : ''}
+          </div>`
+        )
+      })
+      
+      const group = L.featureGroup(markers)
+      group.addTo(mapInstanceRef.current)
+      nearbyLayerRef.current = group
+      
+      group.addLayer(L.marker([selectedPlot.lat, selectedPlot.lon]))
+      mapInstanceRef.current.fitBounds(group.getBounds(), { padding: [50, 50] })
+      
+    } catch (err) {
+      console.error(err)
+      setNearbyError('Failed to fetch nearby places.')
+    } finally {
+      setIsFetchingNearby(false)
     }
   }
 
@@ -721,8 +994,33 @@ export default function MapPage() {
               </button>
             </div>
 
+            {/* Tab Bar */}
+            <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', background: '#f8fafc' }}>
+              <button 
+                onClick={() => setActivePanelTab('details')}
+                style={{ flex: 1, padding: '0.75rem', fontWeight: '600', fontSize: '0.85rem', color: activePanelTab === 'details' ? 'var(--color-primary)' : 'var(--color-text-muted)', borderBottom: activePanelTab === 'details' ? '2px solid var(--color-primary)' : '2px solid transparent', background: 'transparent', borderTop: 'none', borderLeft: 'none', borderRight: 'none', cursor: 'pointer', transition: 'all 0.2s' }}
+              >
+                Details
+              </button>
+              <button 
+                onClick={() => setActivePanelTab('directions')}
+                style={{ flex: 1, padding: '0.75rem', fontWeight: '600', fontSize: '0.85rem', color: activePanelTab === 'directions' ? 'var(--color-primary)' : 'var(--color-text-muted)', borderBottom: activePanelTab === 'directions' ? '2px solid var(--color-primary)' : '2px solid transparent', background: 'transparent', borderTop: 'none', borderLeft: 'none', borderRight: 'none', cursor: 'pointer', transition: 'all 0.2s' }}
+              >
+                Directions
+              </button>
+              <button 
+                onClick={() => setActivePanelTab('nearby')}
+                style={{ flex: 1, padding: '0.75rem', fontWeight: '600', fontSize: '0.85rem', color: activePanelTab === 'nearby' ? 'var(--color-primary)' : 'var(--color-text-muted)', borderBottom: activePanelTab === 'nearby' ? '2px solid var(--color-primary)' : '2px solid transparent', background: 'transparent', borderTop: 'none', borderLeft: 'none', borderRight: 'none', cursor: 'pointer', transition: 'all 0.2s' }}
+              >
+                Nearby
+              </button>
+            </div>
+
             {/* Panel Body */}
             <div style={{ padding: '1.25rem', flex: 1, overflowY: 'auto' }}>
+              
+              {activePanelTab === 'details' && (
+                <>
               {/* Section 1: Details */}
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 <InfoRow label="Type" value={selectedPlot.plot_type} />
@@ -913,6 +1211,249 @@ export default function MapPage() {
                   )
                 })()}
               </div>
+                </>
+              )}
+
+              {/* SECTION 4: Directions */}
+              {activePanelTab === 'directions' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <h3 style={{ fontSize: '0.9rem', fontWeight: '700', color: 'var(--color-text)', margin: 0 }}>Get Directions</h3>
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: '#f8fafc', padding: '0.85rem', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <MapPin size={16} color="var(--color-text-muted)" />
+                      <input 
+                        className="form-input" 
+                        value={isDirToPlot ? dirFrom : "Plot"}
+                        onChange={handleAddressInputChange}
+                        onFocus={() => { if (isDirToPlot && dirFrom) setShowSuggestions(true) }}
+                        disabled={!isDirToPlot}
+                        placeholder={isDirToPlot ? "Enter origin..." : ""}
+                        style={{ flex: 1, padding: '0.4rem 0.75rem', fontSize: '0.85rem', ...(!isDirToPlot ? { background: '#e2e8f0', color: '#475569' } : {}) }}
+                      />
+                    </div>
+                    
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      <button 
+                        className="btn btn-outline btn-sm" 
+                        onClick={() => setIsDirToPlot(!isDirToPlot)}
+                        title="Swap Origin and Destination"
+                        style={{ padding: '0.2rem', borderRadius: '50%', background: '#fff' }}
+                      >
+                        <ArrowLeftRight size={14} style={{ transform: 'rotate(90deg)' }} />
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <MapIcon size={16} color="var(--color-primary)" />
+                      <input 
+                        className="form-input" 
+                        value={!isDirToPlot ? dirFrom : "Plot"}
+                        onChange={handleAddressInputChange}
+                        onFocus={() => { if (!isDirToPlot && dirFrom) setShowSuggestions(true) }}
+                        disabled={isDirToPlot}
+                        placeholder={!isDirToPlot ? "Enter destination..." : ""}
+                        style={{ flex: 1, padding: '0.4rem 0.75rem', fontSize: '0.85rem', ...(isDirToPlot ? { background: '#e2e8f0', color: '#475569' } : {}) }}
+                      />
+                    </div>
+
+                    {/* Autocomplete Dropdown */}
+                    {showSuggestions && (
+                      <div style={{ background: '#fff', border: '1px solid var(--color-border)', borderRadius: '8px', maxHeight: '200px', overflowY: 'auto', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', marginTop: '0.25rem' }}>
+                        {isGeocoding ? (
+                          <div style={{ padding: '0.75rem', fontSize: '0.85rem', color: 'var(--color-text-muted)', textAlign: 'center' }}>Searching...</div>
+                        ) : geocodeResults.length > 0 ? (
+                          geocodeResults.map((item, idx) => (
+                            <div 
+                              key={idx} 
+                              onClick={() => handleSelectSuggestion(item)}
+                              style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', borderBottom: idx < geocodeResults.length - 1 ? '1px solid #f1f5f9' : 'none', cursor: 'pointer' }}
+                              onMouseOver={(e) => e.currentTarget.style.background = '#f8fafc'}
+                              onMouseOut={(e) => e.currentTarget.style.background = '#fff'}
+                            >
+                              <div style={{ fontWeight: '600', color: 'var(--color-text)', marginBottom: '0.15rem' }}>{item.display_name.split(',')[0]}</div>
+                              <div style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.display_name}</div>
+                              {item.distanceToPlot != null && (
+                                <div style={{ fontSize: '0.7rem', color: 'var(--color-primary)', marginTop: '0.15rem', fontWeight: '500' }}>
+                                  {item.distanceToPlot > 1000 ? (item.distanceToPlot / 1000).toFixed(1) + ' km' : Math.round(item.distanceToPlot) + ' m'} away
+                                </div>
+                              )}
+                            </div>
+                          ))
+                        ) : dirFrom ? (
+                          <div style={{ padding: '0.75rem', fontSize: '0.85rem', color: 'var(--color-text-muted)', textAlign: 'center' }}>No results found</div>
+                        ) : null}
+                      </div>
+                    )}
+
+                    {/* Travel Mode Selector */}
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+                      <button 
+                        className="btn btn-outline btn-sm" 
+                        onClick={() => setTravelMode('driving')}
+                        style={{ flex: 1, padding: '0.4rem', borderRadius: '6px', border: travelMode === 'driving' ? '2px solid var(--color-primary)' : '1px solid var(--color-border)', background: travelMode === 'driving' ? '#eff6ff' : '#fff', color: travelMode === 'driving' ? 'var(--color-primary)' : 'var(--color-text)' }}
+                      >
+                        <Car size={16} />
+                      </button>
+                      <button 
+                        className="btn btn-outline btn-sm" 
+                        onClick={() => setTravelMode('cycling')}
+                        style={{ flex: 1, padding: '0.4rem', borderRadius: '6px', border: travelMode === 'cycling' ? '2px solid var(--color-primary)' : '1px solid var(--color-border)', background: travelMode === 'cycling' ? '#eff6ff' : '#fff', color: travelMode === 'cycling' ? 'var(--color-primary)' : 'var(--color-text)' }}
+                      >
+                        <Bike size={16} />
+                      </button>
+                      <button 
+                        className="btn btn-outline btn-sm" 
+                        onClick={() => setTravelMode('foot')}
+                        style={{ flex: 1, padding: '0.4rem', borderRadius: '6px', border: travelMode === 'foot' ? '2px solid var(--color-primary)' : '1px solid var(--color-border)', background: travelMode === 'foot' ? '#eff6ff' : '#fff', color: travelMode === 'foot' ? 'var(--color-primary)' : 'var(--color-text)' }}
+                      >
+                        <Footprints size={16} />
+                      </button>
+                    </div>
+
+                    {routeError && (
+                      <div style={{ color: '#ef4444', fontSize: '0.8rem', padding: '0.5rem', background: '#fef2f2', borderRadius: '6px', border: '1px solid #fca5a5' }}>
+                        {routeError}
+                      </div>
+                    )}
+
+                    <button 
+                      className="btn btn-primary"
+                      onClick={handleFetchRoute}
+                      disabled={isRouting}
+                      style={{ marginTop: '0.25rem', display: 'flex', justifyContent: 'center', gap: '0.5rem' }}
+                    >
+                      {isRouting ? <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> : <Navigation size={14} />}
+                      {isRouting ? 'Routing...' : 'Show Route'}
+                    </button>
+                  </div>
+
+                  {/* Route Steps */}
+                  {routeData && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem', background: '#eff6ff', padding: '0.75rem', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#1e40af', fontWeight: '600', fontSize: '0.85rem' }}>
+                          <Clock size={15} />
+                          <span>{Math.round(routeData.duration / 60)} min</span>
+                        </div>
+                        <div style={{ color: '#1e40af', fontWeight: '600', fontSize: '0.85rem' }}>
+                          {(routeData.distance / 1000).toFixed(1)} km
+                        </div>
+                      </div>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {routeData.legs?.[0]?.steps?.map((step, idx) => (
+                          <div key={idx} style={{ display: 'flex', gap: '0.75rem', padding: '0.5rem 0', borderBottom: '1px solid var(--color-border)' }}>
+                            <div style={{ width: '24px', display: 'flex', justifyContent: 'center', color: 'var(--color-text-muted)' }}>
+                              <Navigation size={14} style={{ transform: step.maneuver.modifier?.includes('left') ? 'rotate(-45deg)' : step.maneuver.modifier?.includes('right') ? 'rotate(45deg)' : 'none' }} />
+                            </div>
+                            <div style={{ flex: 1, fontSize: '0.85rem', color: 'var(--color-text)' }}>
+                              {step.maneuver.instruction}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: '600' }}>
+                              {step.distance > 1000 ? (step.distance / 1000).toFixed(1) + 'km' : Math.round(step.distance) + 'm'}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* SECTION 5: Nearby Places */}
+              {activePanelTab === 'nearby' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <h3 style={{ fontSize: '0.9rem', fontWeight: '700', color: 'var(--color-text)', margin: 0 }}>Explore Nearby (2km)</h3>
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                    {['Hospital', 'School', 'Restaurant', 'Attraction', 'ATM', 'Park', 'Supermarket', 'Pharmacy', 'Cafe', 'Bank'].map(cat => (
+                      <button
+                        key={cat}
+                        className={`btn ${nearbyCategory === cat ? 'btn-primary' : 'btn-outline'} btn-sm`}
+                        onClick={() => handleFetchNearby(cat)}
+                        disabled={isFetchingNearby}
+                        style={{ borderRadius: '20px', fontSize: '0.75rem', padding: '0.35rem 0.75rem' }}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {nearbyError && (
+                    <div style={{ color: '#ef4444', fontSize: '0.8rem', padding: '0.5rem', background: '#fef2f2', borderRadius: '6px', border: '1px solid #fca5a5' }}>
+                      {nearbyError}
+                    </div>
+                  )}
+                  
+                  {isFetchingNearby && (
+                    <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                      <span className="spinner" style={{ width: 20, height: 20, borderWidth: 2, borderColor: 'var(--color-primary)', borderRightColor: 'transparent' }} />
+                    </div>
+                  )}
+
+                  {!isFetchingNearby && nearbyPlaces.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--color-text-muted)', marginBottom: '0.25rem' }}>
+                        Found {nearbyPlaces.length} places (Map updated)
+                      </div>
+                      {nearbyPlaces.slice(0, 15).map((el, i) => (
+                        <div key={i} style={{ display: 'flex', flexDirection: 'column', background: expandedNearbyPlaceId === el.id ? '#eff6ff' : '#f8fafc', borderRadius: '8px', border: expandedNearbyPlaceId === el.id ? '1px solid #bfdbfe' : '1px solid var(--color-border)', overflow: 'hidden', transition: 'all 0.2s' }}>
+                          <div 
+                            onClick={() => handleClickNearbyPlace(el)}
+                            style={{ padding: '0.65rem 0.75rem', fontSize: '0.85rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                            onMouseOver={(e) => { if (expandedNearbyPlaceId !== el.id) e.currentTarget.style.background = '#f1f5f9' }}
+                            onMouseOut={(e) => { if (expandedNearbyPlaceId !== el.id) e.currentTarget.style.background = 'transparent' }}
+                          >
+                            <div>
+                              <div style={{ fontWeight: '600', color: 'var(--color-text)' }}>{el.tags?.name || 'Unnamed ' + nearbyCategory}</div>
+                              {el.tags?.amenity && <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.15rem' }}>{el.tags.amenity}</div>}
+                            </div>
+                            <ChevronDown size={14} style={{ transform: expandedNearbyPlaceId === el.id ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', color: 'var(--color-text-muted)' }} />
+                          </div>
+                          
+                          {expandedNearbyPlaceId === el.id && (
+                            <div style={{ padding: '0 0.75rem 0.75rem 0.75rem', borderTop: '1px solid #dbeafe' }}>
+                              <div style={{ fontSize: '0.75rem', color: '#475569', marginTop: '0.5rem', marginBottom: '0.5rem' }}>
+                                {el.tags?.['addr:street'] ? `${el.tags['addr:street']}${el.tags['addr:city'] ? ', ' + el.tags['addr:city'] : ''}` : 'Address not available'}
+                              </div>
+                              <div style={{ fontSize: '0.75rem', color: '#475569', marginBottom: '0.5rem', fontWeight: '500' }}>
+                                {(() => {
+                                  const d = L.latLng(el.lat, el.lon).distanceTo(L.latLng(selectedPlot.lat, selectedPlot.lon))
+                                  return d > 1000 ? (d / 1000).toFixed(1) + ' km away' : Math.round(d) + ' m away'
+                                })()}
+                              </div>
+                              <button 
+                                onClick={() => handleRouteToNearby(el)}
+                                className="btn btn-primary btn-sm" 
+                                style={{ width: '100%', display: 'flex', justifyContent: 'center', gap: '0.4rem', padding: '0.35rem' }}
+                              >
+                                <Navigation size={13} /> Get Directions
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {nearbyPlaces.length > 15 && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textAlign: 'center', fontStyle: 'italic', marginTop: '0.5rem' }}>
+                          + {nearbyPlaces.length - 15} more on map
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {!isFetchingNearby && nearbyCategory && nearbyPlaces.length === 0 && (
+                     <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
+                       No {nearbyCategory.toLowerCase()}s found within 2km.
+                     </div>
+                  )}
+                </div>
+              )}
+
             </div>
           </div>
         )}

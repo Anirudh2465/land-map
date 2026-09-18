@@ -229,10 +229,10 @@
 - Phase 3 (MVP scope)
 - Phase 4 (MVP scope)
 - Phase UI/UX Housekeeping and Upgrades
+- Phase 6 (Routing & Nearby Landmarks)
 
 ## Phases Left
 - Phase 5
-- Phase 6
 - Phase 7
 - Phase 8
 - Phase 9
@@ -273,3 +273,8 @@
 - Standardized modal behavior across the application (`index.css`) with safely tuned z-indices and dynamic `max-height` constraints.
 - Updated `HomePage.jsx` with premium SVG action cards and unified `LoginPage.jsx` presentation.
 - Fixed UX glitches including header clipping in `MapPage.jsx` and multiline textarea selection issues in modals.
+### Phase 6
+- Implemented backend routing module proxying Nominatim (Geocoding), OSRM (Routing), and Overpass (Nearby POIs).
+- Upgraded `MapPage.jsx` left-info panel with Tab navigation (Details, Directions, Nearby).
+- Integrated beautifully stylized turn-by-turn routing inputs inside the panel with Leaflet map polyline rendering.
+- Implemented nearby points of interest (Hospitals, Schools, etc.) with custom Leaflet markers rendering around the selected plot.
