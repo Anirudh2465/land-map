@@ -3,7 +3,7 @@ import tempfile
 import pytesseract
 from pdf2image import convert_from_path
 from PIL import Image
-from minio_client import minio_client
+from minio_client import get_minio_client
 from config import settings
 
 def perform_ocr_on_document(storage_key: str) -> dict:
@@ -12,8 +12,9 @@ def perform_ocr_on_document(storage_key: str) -> dict:
     Returns extracted text and simple metrics.
     """
     # 1. Download file to a temporary location
+    client = get_minio_client()
     try:
-        response = minio_client.get_object(settings.MINIO_BUCKET, storage_key)
+        response = client.get_object(settings.MINIO_BUCKET, storage_key)
         pdf_bytes = response.read()
     finally:
         response.close()
