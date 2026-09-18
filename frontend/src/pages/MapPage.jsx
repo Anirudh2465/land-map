@@ -222,11 +222,17 @@ export default function MapPage() {
   }
 
   const handleRouteToNearby = (el) => {
-    setDirFrom(selectedPlot.plot_number || "Plot")
+    const placeName = el.tags?.name || "Selected Place"
+    setDirFrom(placeName)
     setIsDirToPlot(false)
-    setDirTo(el.tags?.name || "Destination")
     setSelectedDestCoords({ lat: el.lat, lng: el.lon })
     setActivePanelTab('directions')
+    
+    handleFetchRoute({
+      isDirToPlot: false,
+      dirFrom: placeName,
+      coords: { lat: el.lat, lng: el.lon }
+    })
   }
 
   const handleAddressInputChange = (e) => {
@@ -748,9 +754,10 @@ export default function MapPage() {
   }
 
   // ── Routing & Nearby ──────────────────────────────────────────────────
-  const handleFetchRoute = async () => {
+  const handleFetchRoute = async (options = {}) => {
     if (!selectedPlot || selectedPlot.lat == null || selectedPlot.lon == null) return
-    const inputAddress = isDirToPlot ? dirFrom : dirTo
+    const currentIsDirToPlot = options.isDirToPlot !== undefined ? options.isDirToPlot : isDirToPlot
+    const inputAddress = options.dirFrom !== undefined ? options.dirFrom : dirFrom
     if (!inputAddress.trim()) return
     
     setIsRouting(true)
@@ -758,7 +765,10 @@ export default function MapPage() {
     try {
       let addrLat, addrLng
       
-      if (selectedDestCoords) {
+      if (options.coords) {
+        addrLat = options.coords.lat
+        addrLng = options.coords.lng
+      } else if (selectedDestCoords) {
         addrLat = selectedDestCoords.lat
         addrLng = selectedDestCoords.lng
       } else {
@@ -775,10 +785,10 @@ export default function MapPage() {
       const pLat = selectedPlot.lat
       const pLng = selectedPlot.lon
       
-      const startLat = isDirToPlot ? addrLat : pLat
-      const startLng = isDirToPlot ? addrLng : pLng
-      const endLat = isDirToPlot ? pLat : addrLat
-      const endLng = isDirToPlot ? pLng : addrLng
+      const startLat = currentIsDirToPlot ? addrLat : pLat
+      const startLng = currentIsDirToPlot ? addrLng : pLng
+      const endLat = currentIsDirToPlot ? pLat : addrLat
+      const endLng = currentIsDirToPlot ? pLng : addrLng
       
       const routeRes = await getRoute(startLat, startLng, endLat, endLng, travelMode)
       const route = routeRes.routes[0]
