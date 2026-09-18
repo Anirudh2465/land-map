@@ -103,6 +103,7 @@ export default function MapPage() {
   const mapRef = useRef(null)
   const mapInstanceRef = useRef(null)
   const labelsLayerRef = useRef(null)
+  const satelliteGroupRef = useRef(null)
   const layersRef = useRef([]) // { layer, plot, labelMarker }
   const selectedLayerRef = useRef(null)
 
@@ -294,35 +295,50 @@ export default function MapPage() {
       zoomControl: true,
     })
 
-    // 1. Low-res fallback layer (loads state/district level tiles and scales them up)
-    // This perfectly matches the user's idea of "loading the state" but uses low-res
-    // tiles so the browser doesn't crash. It prevents the map from blacking out during flyTo.
-    L.tileLayer(
+    // 1. Satellite Base
+    const satelliteLowRes = L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      {
-        maxNativeZoom: 10, // Locks tile requests to a low zoom (covers large areas)
-        maxZoom: 22,
-      }
-    ).addTo(map)
+      { maxNativeZoom: 10, maxZoom: 22 }
+    )
+    const satelliteHighRes = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      { attribution: 'Tiles © Esri', maxNativeZoom: 18, maxZoom: 22, keepBuffer: 4 }
+    )
+    const satelliteGroup = L.layerGroup([satelliteLowRes, satelliteHighRes])
+    satelliteGroupRef.current = satelliteGroup
 
-    // 2. High-res detail layer (loads specific high-res tiles where the user is)
-    L.tileLayer(
-      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      {
-        attribution: 'Tiles © Esri',
-        maxNativeZoom: 18,
-        maxZoom: 22,
-        keepBuffer: 4, // Pre-loads a larger ring of tiles around the view
-      }
-    ).addTo(map)
+    // 2. Default Map
+    const cartoApiKey = import.meta.env.VITE_CARTO_API_KEY
+    const cartoUrl = cartoApiKey 
+      ? `https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=${cartoApiKey}`
+      : 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'
+      
+    const defaultMap = L.tileLayer(
+      cartoUrl,
+      { attribution: '© OpenStreetMap contributors © CARTO', maxZoom: 22 }
+    )
+
+    // 3. Terrain Map
+    const terrainMap = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+      { attribution: 'Tiles © Esri', maxNativeZoom: 18, maxZoom: 22 }
+    )
+
+    const baseMaps = {
+      "Default": defaultMap,
+      "Satellite": satelliteGroup,
+      "Terrain": terrainMap
+    }
+
+    // Default to Default Map
+    defaultMap.addTo(map)
+
+    L.control.layers(baseMaps, null, { position: 'bottomright' }).addTo(map)
 
     // Esri World Boundaries and Places (labels + roads)
     const labelsLayer = L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-      {
-        maxNativeZoom: 18,
-        maxZoom: 22,
-      }
+      { maxNativeZoom: 18, maxZoom: 22 }
     )
     labelsLayerRef.current = labelsLayer
 

@@ -278,3 +278,5 @@
 - Upgraded `MapPage.jsx` left-info panel with Tab navigation (Details, Directions, Nearby).
 - Integrated beautifully stylized turn-by-turn routing inputs inside the panel with Leaflet map polyline rendering.
 - Implemented nearby points of interest (Hospitals, Schools, etc.) with custom Leaflet markers rendering around the selected plot.
+- Refined Nearby POIs: Added dynamic search radius (1km-10km), removed disruptive map zoom on empty results, and integrated travel-mode specific routing fetching.
+- Map Layers Upgrade: Introduced a Google Maps-style layer switcher allowing toggle between Default (Carto Voyager), Satellite (Esri Imagery), and Terrain (Esri Topo) basemaps. Integrated Carto API key configuration via `.env` to prevent watermark blocks, and properly scaled Terrain max-zoom limitations.
