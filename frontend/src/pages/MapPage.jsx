@@ -758,6 +758,7 @@ export default function MapPage() {
     if (!selectedPlot || selectedPlot.lat == null || selectedPlot.lon == null) return
     const currentIsDirToPlot = options.isDirToPlot !== undefined ? options.isDirToPlot : isDirToPlot
     const inputAddress = options.dirFrom !== undefined ? options.dirFrom : dirFrom
+    const currentTravelMode = options.travelMode !== undefined ? options.travelMode : travelMode
     if (!inputAddress.trim()) return
     
     setIsRouting(true)
@@ -790,14 +791,14 @@ export default function MapPage() {
       const endLat = currentIsDirToPlot ? pLat : addrLat
       const endLng = currentIsDirToPlot ? pLng : addrLng
       
-      const routeRes = await getRoute(startLat, startLng, endLat, endLng, travelMode)
+      const routeRes = await getRoute(startLat, startLng, endLat, endLng, currentTravelMode)
       const route = routeRes.routes[0]
       
       // Adjust duration based on travel mode (since public OSRM routes often default to driving times)
       const dist = route.distance // in meters
-      if (travelMode === 'foot') {
+      if (currentTravelMode === 'foot') {
         route.duration = dist / 1.4 // ~5 km/h
-      } else if (travelMode === 'cycling') {
+      } else if (currentTravelMode === 'cycling') {
         route.duration = dist / 4.1 // ~15 km/h
       }
       
@@ -1302,21 +1303,21 @@ export default function MapPage() {
                     <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
                       <button 
                         className="btn btn-outline btn-sm" 
-                        onClick={() => setTravelMode('driving')}
+                        onClick={() => { setTravelMode('driving'); if (dirFrom) handleFetchRoute({ travelMode: 'driving' }) }}
                         style={{ flex: 1, padding: '0.4rem', borderRadius: '6px', border: travelMode === 'driving' ? '2px solid var(--color-primary)' : '1px solid var(--color-border)', background: travelMode === 'driving' ? '#eff6ff' : '#fff', color: travelMode === 'driving' ? 'var(--color-primary)' : 'var(--color-text)' }}
                       >
                         <Car size={16} />
                       </button>
                       <button 
                         className="btn btn-outline btn-sm" 
-                        onClick={() => setTravelMode('cycling')}
+                        onClick={() => { setTravelMode('cycling'); if (dirFrom) handleFetchRoute({ travelMode: 'cycling' }) }}
                         style={{ flex: 1, padding: '0.4rem', borderRadius: '6px', border: travelMode === 'cycling' ? '2px solid var(--color-primary)' : '1px solid var(--color-border)', background: travelMode === 'cycling' ? '#eff6ff' : '#fff', color: travelMode === 'cycling' ? 'var(--color-primary)' : 'var(--color-text)' }}
                       >
                         <Bike size={16} />
                       </button>
                       <button 
                         className="btn btn-outline btn-sm" 
-                        onClick={() => setTravelMode('foot')}
+                        onClick={() => { setTravelMode('foot'); if (dirFrom) handleFetchRoute({ travelMode: 'foot' }) }}
                         style={{ flex: 1, padding: '0.4rem', borderRadius: '6px', border: travelMode === 'foot' ? '2px solid var(--color-primary)' : '1px solid var(--color-border)', background: travelMode === 'foot' ? '#eff6ff' : '#fff', color: travelMode === 'foot' ? 'var(--color-primary)' : 'var(--color-text)' }}
                       >
                         <Footprints size={16} />

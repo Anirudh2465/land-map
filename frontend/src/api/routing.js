@@ -11,13 +11,14 @@ export async function geocodeAddress(address, lat = null, lng = null) {
 }
 
 export async function getRoute(startLat, startLng, endLat, endLng, profile = 'driving') {
+  const osrmProfile = profile === 'cycling' ? 'bike' : profile;
   const { data } = await client.get('/routing/route', {
     params: {
       start_lat: startLat,
       start_lng: startLng,
       end_lat: endLat,
       end_lng: endLng,
-      profile
+      profile: osrmProfile
     }
   })
   return data
