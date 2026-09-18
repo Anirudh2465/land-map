@@ -23,6 +23,10 @@ class PlotListItem(BaseModel):
     lon: Optional[float] = None
     location_name: Optional[str] = None
     landmark: Optional[str] = None
+    plot_type: Optional[str] = None
+    address: Optional[str] = None
+    year_of_registration: Optional[str] = None
+    owner_name: Optional[str] = None
     # GeoJSON geometry for map rendering
     boundary_geojson: Optional[dict] = None
     # Include docs for manage page count badge

@@ -44,6 +44,10 @@ def _plot_to_list_item(plot: Plot) -> PlotListItem:
         lon=plot.lon,
         location_name=plot.location_name,
         landmark=plot.landmark,
+        plot_type=plot.plot_type,
+        address=plot.address,
+        year_of_registration=plot.year_of_registration,
+        owner_name=plot.owner_name,
         boundary_geojson=_geometry_to_geojson(plot.boundary),
         documents=docs,
     )
@@ -61,6 +65,10 @@ def _plot_to_detail(plot: Plot) -> PlotDetail:
         lon=plot.lon,
         location_name=plot.location_name,
         landmark=plot.landmark,
+        plot_type=plot.plot_type,
+        address=plot.address,
+        year_of_registration=plot.year_of_registration,
+        owner_name=plot.owner_name,
         boundary_geojson=_geometry_to_geojson(plot.boundary),
         survey_number=plot.survey_number,
         classification=plot.classification,
@@ -143,10 +151,26 @@ async def create_plot(
     land_id: str = Form(...),
     land_name: str = Form(...),
     landmark: Optional[str] = Form(None),
+    plot_type: Optional[str] = Form(None),
+    address: Optional[str] = Form(None),
+    year_of_registration: Optional[str] = Form(None),
+    owner_name: Optional[str] = Form(None),
+    lat: Optional[float] = Form(None),
+    lon: Optional[float] = Form(None),
+    area_value: Optional[float] = Form(None),
+    area_unit: Optional[str] = Form(None),
     kml_file: UploadFile = File(...),
     fmb_file: Optional[UploadFile] = File(None),
     patta_file: Optional[UploadFile] = File(None),
     deed_file: Optional[UploadFile] = File(None),
+    parent_document_file: Optional[UploadFile] = File(None),
+    ec_details_file: Optional[UploadFile] = File(None),
+    building_plan_file: Optional[UploadFile] = File(None),
+    plan_approval_letter_file: Optional[UploadFile] = File(None),
+    building_permit_letter_file: Optional[UploadFile] = File(None),
+    property_tax_file: Optional[UploadFile] = File(None),
+    aerial_photo_file: Optional[UploadFile] = File(None),
+    dispute_details_file: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     current_user=Depends(require_admin),
 ):
@@ -178,17 +202,21 @@ async def create_plot(
     try:
         parsed = extract_polygon_from_kml(kml_bytes)
         boundary_wkt = parsed["wkt"]
-        centroid_lat = parsed["centroid_lat"]
-        centroid_lon = parsed["centroid_lon"]
+        centroid_lat = lat if lat is not None else parsed["centroid_lat"]
+        centroid_lon = lon if lon is not None else parsed["centroid_lon"]
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to parse KML: {e}")
 
-    # Calculate exact area in square meters using PostGIS geography casting
-    from sqlalchemy import text
-    query = text("SELECT ST_Area(ST_GeomFromText(:wkt, 4326)::geography)")
-    result = db.execute(query, {"wkt": boundary_wkt}).scalar()
-    area_value = float(result) if result else 0.0
-    area_unit = "sqm"
+    # Calculate exact area in square meters using PostGIS geography casting unless overridden
+    if area_value is None:
+        from sqlalchemy import text
+        query = text("SELECT ST_Area(ST_GeomFromText(:wkt, 4326)::geography)")
+        result = db.execute(query, {"wkt": boundary_wkt}).scalar()
+        final_area_value = float(result) if result else 0.0
+        final_area_unit = "sqm"
+    else:
+        final_area_value = area_value
+        final_area_unit = area_unit or "sqm"
 
     # ── Reverse geocode ───────────────────────────────────────────────────
     location_name = await _reverse_geocode(centroid_lat, centroid_lon)
@@ -210,12 +238,16 @@ async def create_plot(
         geo_node_id=district_id,
         property_name=land_name,
         plot_number=land_id,
-        area_value=area_value,
-        area_unit=area_unit,
+        area_value=final_area_value,
+        area_unit=final_area_unit,
         lat=centroid_lat,
         lon=centroid_lon,
         location_name=location_name,
         landmark=landmark,
+        plot_type=plot_type,
+        address=address,
+        year_of_registration=year_of_registration,
+        owner_name=owner_name,
         boundary=boundary_geom,
         centroid=centroid_geom,
         source_file_type="KML",
@@ -231,6 +263,14 @@ async def create_plot(
         ("FMB", fmb_file),
         ("PATTA", patta_file),
         ("DEED", deed_file),
+        ("PARENT_DOCUMENT", parent_document_file),
+        ("EC_DETAILS", ec_details_file),
+        ("BUILDING_PLAN", building_plan_file),
+        ("PLAN_APPROVAL", plan_approval_letter_file),
+        ("BUILDING_PERMIT", building_permit_letter_file),
+        ("PROPERTY_TAX", property_tax_file),
+        ("AERIAL_PHOTO", aerial_photo_file),
+        ("DISPUTE_DETAILS", dispute_details_file),
     ]
     for doc_type, upload in pdf_files:
         if upload and upload.filename:

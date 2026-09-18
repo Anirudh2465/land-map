@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     MINIO_BUCKET: str = "lpms-documents"
     MINIO_SECURE: bool = False
 
+    # AI Configuration
+    GEMINI_API_KEY: str = ""
+
     class Config:
         env_file = ".env"
 

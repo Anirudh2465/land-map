@@ -43,6 +43,10 @@ class Plot(Base):
     area_value = Column(Numeric(12, 2), nullable=True)
     area_unit = Column(String, default="sqm")
     classification = Column(String, nullable=True)
+    plot_type = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    year_of_registration = Column(String, nullable=True)
+    owner_name = Column(String, nullable=True)
     # MVP extra fields
     landmark = Column(String, nullable=True)
     lat = Column(Float, nullable=True)

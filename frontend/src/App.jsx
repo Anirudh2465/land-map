@@ -23,6 +23,7 @@ function AppRoutes() {
       <Route path="/navigate/:mode" element={<NavigatorPage />} />
 
       {/* Public map view */}
+      <Route path="/map" element={<MapPage />} />
       <Route path="/map/:districtId" element={<MapPage />} />
 
       {/* Admin manage route — protected */}
