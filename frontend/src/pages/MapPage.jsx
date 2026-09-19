@@ -16,7 +16,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { getPlots, getPlot } from '../api/plots'
 import { getDocumentUrl } from '../api/documents'
-import { getNodeByName, getCountries, getChildren } from '../api/geo'
+import { getNodeByName, getCountries, getChildren, getNode } from '../api/geo'
 import { geocodeAddress, getRoute, getNearbyPlaces } from '../api/routing'
 import Header from '../components/Header'
 import { Search, ChevronDown, ChevronUp, X, FileText, Download, Eye, ChevronRight, MapPin, Navigation, ArrowLeftRight, Map as MapIcon, Clock, Car, Bike, Footprints } from 'lucide-react'
@@ -111,6 +111,7 @@ export default function MapPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [selectedPlot, setSelectedPlot] = useState(null)
+  const [activeNode, setActiveNode] = useState(null)
   const [pdfModal, setPdfModal] = useState(null) // { url, docType }
   const [pdfLoading, setPdfLoading] = useState(false)
 
@@ -284,8 +285,8 @@ export default function MapPage() {
   useEffect(() => {
     if (mapInstanceRef.current) return // Already initialized
 
-    const initialCenter = districtId ? CBE_BOUNDS.getCenter() : WORLD_VIEW.center
-    const initialZoom = districtId ? 11 : WORLD_VIEW.zoom
+    const initialCenter = WORLD_VIEW.center
+    const initialZoom = WORLD_VIEW.zoom
 
     const map = L.map(mapRef.current, {
       center: initialCenter,
@@ -294,7 +295,7 @@ export default function MapPage() {
       maxZoom: 22,
       zoomControl: true,
     })
-
+    
     // 1. Satellite Base
     const satelliteLowRes = L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -406,6 +407,10 @@ export default function MapPage() {
   useEffect(() => {
     if (!activeDistrictId) return
     setLoading(true)
+    
+    // Fetch region details
+    getNode(activeDistrictId).then(setActiveNode).catch(() => {})
+
     getPlots(activeDistrictId)
       .then(setPlots)
       .catch(err => setError(err.response?.data?.detail || 'Failed to load parcels.'))
@@ -564,7 +569,7 @@ export default function MapPage() {
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
           <span className="header-center-title">
-            Coimbatore District — Land Parcels
+            {activeNode ? activeNode.name : 'Region'} — Land Parcels
           </span>
           {loading ? (
             <span className="spinner" />
@@ -1166,45 +1171,24 @@ export default function MapPage() {
               <div>
                 <div style={{ marginBottom: '0.85rem' }}>
                   <label style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.35rem' }}>
-                    Documents Category
+                    Uploaded Documents
                   </label>
-                  <select
-                    className="form-input"
-                    style={{
-                      width: '100%',
-                      fontWeight: '600',
-                      fontSize: '0.875rem',
-                      padding: '0 0.75rem',
-                      height: '38px',
-                      borderRadius: '8px',
-                      border: '1px solid var(--color-border)',
-                      background: '#ffffff'
-                    }}
-                    value={panelDocCategory}
-                    onChange={e => setPanelDocCategory(e.target.value)}
-                  >
-                    <option value="land_documents">Land Documents</option>
-                    <option value="buildup_details">Build-up Details</option>
-                    <option value="others">Others</option>
-                  </select>
                 </div>
 
-                {/* Filtered documents list */}
                 {(() => {
-                  const allowedTypes = DOC_CATEGORIES[panelDocCategory] || []
-                  const categoryDocs = (selectedPlot.documents || []).filter(d => allowedTypes.includes(d.doc_type))
+                  const plotDocs = selectedPlot.documents || []
 
-                  if (categoryDocs.length === 0) {
+                  if (plotDocs.length === 0) {
                     return (
                       <div style={{ padding: '0.75rem 0', color: 'var(--color-text-muted)', fontSize: '0.85rem', fontStyle: 'italic' }}>
-                        No documents in this category.
+                        No documents uploaded for this parcel.
                       </div>
                     )
                   }
 
                   return (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      {categoryDocs.map(doc => (
+                      {plotDocs.map(doc => (
                         <div key={doc.id} style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -1216,14 +1200,14 @@ export default function MapPage() {
                         }}>
                           <span style={{ fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.45rem', color: '#0f172a' }}>
                             <FileText size={15} style={{ color: 'var(--color-primary)' }} />
-                            <span>{doc.doc_type}</span>
+                            <span style={{ textTransform: 'capitalize' }}>{doc.doc_type.replace(/_/g, ' ')}</span>
                           </span>
                           <div style={{ display: 'flex', gap: '0.35rem' }}>
                             <button
                               className="btn btn-outline btn-sm"
                               onClick={() => handlePreviewPdf(doc)}
                               disabled={pdfLoading}
-                              title="Preview PDF"
+                              title="Preview Document"
                               style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px' }}
                             >
                               <Eye size={13} />
@@ -1231,7 +1215,7 @@ export default function MapPage() {
                             <button
                               className="btn btn-primary btn-sm"
                               onClick={() => handleDownloadPdf(doc)}
-                              title="Download PDF"
+                              title="Download Document"
                               style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px' }}
                             >
                               <Download size={13} />
