@@ -24,11 +24,21 @@ class GeoNodeOut(BaseModel):
 
 def get_plot_count(db: Session, node: GeoNode) -> int:
     if node.level == 'DISTRICT':
-        return db.query(Plot).filter(Plot.geo_node_id == node.id).count()
+        return db.query(Plot).filter(Plot.geo_node_id == node.id, Plot.status == "ACTIVE").count()
     elif node.level == 'STATE':
-        return db.query(Plot).join(GeoNode, Plot.geo_node_id == GeoNode.id).filter(GeoNode.parent_id == node.id).count()
+        return db.query(Plot).join(GeoNode, Plot.geo_node_id == GeoNode.id).filter(
+            GeoNode.parent_id == node.id, Plot.status == "ACTIVE"
+        ).count()
     elif node.level == 'COUNTRY':
-        return db.query(Plot).count()
+        # Sum plots attached directly to the country (overseas) 
+        # and plots attached to states/districts belonging to this country
+        direct_count = db.query(Plot).filter(Plot.geo_node_id == node.id, Plot.status == "ACTIVE").count()
+        child_count = db.query(Plot).join(GeoNode, Plot.geo_node_id == GeoNode.id).filter(
+            ((GeoNode.parent_id == node.id) | 
+            (GeoNode.parent_id.in_(db.query(GeoNode.id).filter(GeoNode.parent_id == node.id)))),
+            Plot.status == "ACTIVE"
+        ).count()
+        return direct_count + child_count
     return 0
 
 
@@ -51,6 +61,16 @@ def list_children(node_id: UUID, db: Session = Depends(get_db)):
     for child in children:
         child.plot_count = get_plot_count(db, child)
     return children
+
+
+@router.get("/{node_id}", response_model=GeoNodeOut)
+def get_node(node_id: UUID, db: Session = Depends(get_db)):
+    """Get a single GeoNode by its ID."""
+    node = db.query(GeoNode).filter(GeoNode.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="GeoNode not found")
+    node.plot_count = get_plot_count(db, node)
+    return node
 
 
 @router.get("/by-name/{level}/{name}", response_model=GeoNodeOut)
