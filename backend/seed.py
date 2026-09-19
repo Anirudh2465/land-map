@@ -54,39 +54,52 @@ def seed():
         else:
             print("ℹ️  India GeoNode already exists — skipping.")
 
-        # ── GeoNode: Tamil Nadu ────────────────────────────────────────────
-        tn = db.query(GeoNode).filter(
-            GeoNode.level == "STATE", GeoNode.name == "Tamil Nadu"
-        ).first()
-        if not tn:
-            tn = GeoNode(
-                id=uuid.uuid4(),
-                parent_id=india.id,
-                level="STATE",
-                name="Tamil Nadu",
-                iso_code="IN-TN",
-            )
-            db.add(tn)
-            db.flush()
-            print("✅ GeoNode created: Tamil Nadu (STATE)")
-        else:
-            print("ℹ️  Tamil Nadu GeoNode already exists — skipping.")
+        # ── GeoNode: UK (Overseas Example) ─────────────────────────────────
+        uk = db.query(GeoNode).filter(GeoNode.level == "COUNTRY", GeoNode.name == "United Kingdom").first()
+        if not uk:
+            uk = GeoNode(id=uuid.uuid4(), parent_id=None, level="COUNTRY", name="United Kingdom", iso_code="GB")
+            db.add(uk)
+            print("✅ GeoNode created: United Kingdom (COUNTRY)")
+        
+        # ── GeoNode: All India States ──────────────────────────────────────
+        INDIA_STATES = [
+            'Tamil Nadu', 'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
+            'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
+            'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram',
+            'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim',
+            'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
+        ]
+        
+        tn_node = None
+        for state_name in INDIA_STATES:
+            state_node = db.query(GeoNode).filter(GeoNode.level == "STATE", GeoNode.name == state_name, GeoNode.parent_id == india.id).first()
+            if not state_node:
+                state_node = GeoNode(id=uuid.uuid4(), parent_id=india.id, level="STATE", name=state_name)
+                db.add(state_node)
+                db.flush()
+                print(f"✅ GeoNode created: {state_name} (STATE)")
+            if state_name == 'Tamil Nadu':
+                tn_node = state_node
 
-        # ── GeoNode: Coimbatore ────────────────────────────────────────────
-        cbe = db.query(GeoNode).filter(
-            GeoNode.level == "DISTRICT", GeoNode.name == "Coimbatore"
-        ).first()
-        if not cbe:
-            cbe = GeoNode(
-                id=uuid.uuid4(),
-                parent_id=tn.id,
-                level="DISTRICT",
-                name="Coimbatore",
-            )
-            db.add(cbe)
-            print("✅ GeoNode created: Coimbatore (DISTRICT)")
-        else:
-            print("ℹ️  Coimbatore GeoNode already exists — skipping.")
+        # ── GeoNode: All TN Districts ──────────────────────────────────────
+        TN_DISTRICTS = [
+            'Coimbatore', 'Ariyalur', 'Chengalpattu', 'Chennai', 'Cuddalore',
+            'Dharmapuri', 'Dindigul', 'Erode', 'Kallakurichi', 'Kanchipuram',
+            'Kanyakumari', 'Karur', 'Krishnagiri', 'Madurai', 'Mayiladuthurai',
+            'Nagapattinam', 'Namakkal', 'Nilgiris', 'Perambalur', 'Pudukkottai',
+            'Ramanathapuram', 'Ranipet', 'Salem', 'Sivaganga', 'Tenkasi',
+            'Thanjavur', 'Theni', 'Thoothukudi', 'Tiruchirappalli', 'Tirunelveli',
+            'Tirupathur', 'Tiruppur', 'Tiruvallur', 'Tiruvannamalai', 'Tiruvarur',
+            'Vellore', 'Villupuram', 'Virudhunagar',
+        ]
+        
+        if tn_node:
+            for dist_name in TN_DISTRICTS:
+                dist_node = db.query(GeoNode).filter(GeoNode.level == "DISTRICT", GeoNode.name == dist_name, GeoNode.parent_id == tn_node.id).first()
+                if not dist_node:
+                    dist_node = GeoNode(id=uuid.uuid4(), parent_id=tn_node.id, level="DISTRICT", name=dist_name)
+                    db.add(dist_node)
+                    print(f"✅ GeoNode created: {dist_name} (DISTRICT)")
 
         db.commit()
         print("🌱 Seeding complete.")

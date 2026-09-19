@@ -14,3 +14,8 @@ export async function getNodeByName(level, name) {
   const res = await client.get(`/geo/by-name/${level}/${name}`)
   return res.data
 }
+
+export async function getNode(nodeId) {
+  const res = await client.get(`/geo/${nodeId}`)
+  return res.data
+}
