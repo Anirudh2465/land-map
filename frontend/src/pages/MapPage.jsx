@@ -11,6 +11,7 @@
  *  - PDF preview via iframe in a modal using presigned URLs
  */
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -103,6 +104,7 @@ export default function MapPage() {
   const mapRef = useRef(null)
   const mapInstanceRef = useRef(null)
   const labelsLayerRef = useRef(null)
+  const popupRef = useRef(null)
   const satelliteGroupRef = useRef(null)
   const layersRef = useRef([]) // { layer, plot, labelMarker }
   const selectedLayerRef = useRef(null)
@@ -114,6 +116,7 @@ export default function MapPage() {
   const [activeNode, setActiveNode] = useState(null)
   const [pdfModal, setPdfModal] = useState(null) // { url, docType }
   const [pdfLoading, setPdfLoading] = useState(false)
+  const [popupContainer, setPopupContainer] = useState(null)
 
   // Selection flow states
   const [currentStep, setCurrentStep] = useState(districtId ? 'READY' : 'REGION')
@@ -434,6 +437,67 @@ export default function MapPage() {
     }
   }, [tnNode])
 
+  const currentPopupPlotIdRef = useRef(null)
+
+  // ── Leaflet Popup to React Portal Integration ──────────────────────
+  useEffect(() => {
+    if (!selectedPlot || !mapInstanceRef.current) {
+      setPopupContainer(null)
+      if (popupRef.current) {
+        popupRef.current.remove()
+        popupRef.current = null
+      }
+      currentPopupPlotIdRef.current = null
+      return
+    }
+
+    // If we already have a popup for this plot, do nothing. 
+    // The React portal will automatically re-render the updated selectedPlot data into the existing container!
+    if (currentPopupPlotIdRef.current === selectedPlot.id) {
+      return
+    }
+
+    currentPopupPlotIdRef.current = selectedPlot.id
+
+    const center = selectedPlot.lat && selectedPlot.lon 
+      ? L.latLng(selectedPlot.lat, selectedPlot.lon) 
+      : null
+
+    if (!center) return
+
+    // Create a container for the React portal
+    const container = document.createElement('div')
+    setPopupContainer(container)
+
+    // Detach old popup tracking before opening a new one so `remove` event doesn't clear state
+    if (popupRef.current) {
+      popupRef.current.remove()
+      popupRef.current = null
+    }
+
+    const popup = L.popup({
+      minWidth: 380,
+      maxWidth: 380,
+      closeButton: false,
+      className: 'react-portal-popup',
+      autoPanPadding: [20, 20]
+    })
+      .setLatLng(center)
+      .setContent(container)
+      .openOn(mapInstanceRef.current)
+
+    popupRef.current = popup
+
+    // Unselect plot when leaflet popup is closed by user clicking outside
+    popup.on('remove', () => {
+      if (popupRef.current === popup) {
+        setSelectedPlot(null)
+        currentPopupPlotIdRef.current = null
+      }
+    })
+
+  }, [selectedPlot])
+
   // ── Flow Handlers ───────────────────────────────────────────────────
   async function handleSelectIndia() {
     const node = await getNodeByName('COUNTRY', 'India').catch(() => null)
@@ -627,19 +691,7 @@ export default function MapPage() {
         geoLayer.addTo(map)
       }
 
-      // Add popup
-      const areaText = plot.area_value ? `${Number(plot.area_value).toLocaleString()} ${plot.area_unit || 'sqm'}` : 'N/A'
-      const popupContent = `
-        <div style="font-family: inherit; margin: 0; min-width: 150px;">
-          <h4 style="margin: 0 0 4px 0; font-size: 14px; font-weight: 600;">${plot.plot_number || 'Parcel'}</h4>
-          <p style="margin: 0 0 4px 0; font-size: 12px; color: #475569;">${plot.property_name || 'Unnamed'}</p>
-          <p style="margin: 0; font-size: 12px; font-weight: 500;">Area: ${areaText}</p>
-        </div>
-      `
-      geoLayer.bindPopup(popupContent, {
-        autoPanPaddingBottomRight: [380, 20],
-        closeButton: true
-      })
+      // Note: Custom React popup will be bound on selection
 
       // Compute center for label
       const bounds = geoLayer.getBounds()
@@ -925,7 +977,7 @@ export default function MapPage() {
         {/* Map */}
         <div
           ref={mapRef}
-          className={`map-container ${selectedPlot ? 'has-left-panel' : ''}`}
+          className="map-container"
           style={{ flex: 1, height: '100%', background: 'var(--map-bg-color, #0b0f19)' }}
         />
 
@@ -989,9 +1041,9 @@ export default function MapPage() {
           </div>
         )}
 
-        {/* Left Side Info Panel */}
-        {selectedPlot && (
-          <div className="left-info-panel">
+        {/* Left Side Info Panel rendered inside Leaflet Popup */}
+        {selectedPlot && popupContainer && createPortal(
+          <div className="left-info-panel react-popup-panel">
             {/* Blue Header Bit */}
             <div style={{
               padding: '1.25rem',
@@ -1486,7 +1538,8 @@ export default function MapPage() {
               )}
 
             </div>
-          </div>
+          </div>,
+          popupContainer
         )}
 
         {/* Selection Flow Modal Overlay */}

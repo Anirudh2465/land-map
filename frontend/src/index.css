@@ -1426,14 +1426,26 @@ input, select, textarea { font: inherit; }
   color: var(--color-text-muted);
 }
 
-/* ── Left Map Info Sidebar ─────────────────────────────────────────── */
+/* ── Plot Info Floating Popup ─────────────────────────────────────────── */
+.react-portal-popup .leaflet-popup-content-wrapper {
+  padding: 0;
+  border-radius: 16px;
+  background: transparent;
+  box-shadow: none;
+}
+.react-portal-popup .leaflet-popup-content {
+  margin: 0;
+  width: 380px !important;
+}
+.react-portal-popup .leaflet-popup-tip-container {
+  display: none; /* Hide arrow for cleaner floating look */
+}
+
 .left-info-panel {
-  position: absolute;
-  left: 1.5rem;
-  top: 1.5rem;
-  bottom: 1.5rem;
+  position: relative;
   width: 380px;
-  max-width: calc(100vw - 3rem);
+  max-width: 100vw;
+  max-height: 550px;
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -1444,28 +1456,23 @@ input, select, textarea { font: inherit; }
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: slideInLeft 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@keyframes slideInLeft {
+@keyframes popIn {
   from {
-    transform: translateX(-100%);
+    transform: scale(0.97) translateY(10px);
     opacity: 0;
   }
   to {
-    transform: translateX(0);
+    transform: scale(1) translateY(0);
     opacity: 1;
   }
 }
 
-/* ── Dynamic Leaflet Zoom Controls positioning relative to Left Panel ── */
+/* ── Leaflet Zoom Controls ── */
 .leaflet-top.leaflet-left {
   left: 1rem !important;
   top: 1rem !important;
-  transition: left 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
-}
-
-.has-left-panel .leaflet-top.leaflet-left {
-  left: 420px !important;
 }
 
