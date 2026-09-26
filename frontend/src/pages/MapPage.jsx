@@ -11,7 +11,6 @@
  *  - PDF preview via iframe in a modal using presigned URLs
  */
 import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -104,10 +103,10 @@ export default function MapPage() {
   const mapRef = useRef(null)
   const mapInstanceRef = useRef(null)
   const labelsLayerRef = useRef(null)
-  const popupRef = useRef(null)
   const satelliteGroupRef = useRef(null)
   const layersRef = useRef([]) // { layer, plot, labelMarker }
   const selectedLayerRef = useRef(null)
+  const selectedPlotRef = useRef(null)
 
   const [plots, setPlots] = useState([])
   const [loading, setLoading] = useState(false)
@@ -116,7 +115,7 @@ export default function MapPage() {
   const [activeNode, setActiveNode] = useState(null)
   const [pdfModal, setPdfModal] = useState(null) // { url, docType }
   const [pdfLoading, setPdfLoading] = useState(false)
-  const [popupContainer, setPopupContainer] = useState(null)
+  const [pinnedPos, setPinnedPos] = useState({ x: 0, y: 0 })
   const [activeBasemap, setActiveBasemap] = useState('Satellite')
   const [isPinned, setIsPinned] = useState(true)
   const [floatingPos, setFloatingPos] = useState({ x: 80, y: 120 })
@@ -371,6 +370,12 @@ export default function MapPage() {
       setActiveBasemap(e.name)
     })
 
+    map.on('click', () => {
+      if (selectedLayerRef.current) {
+        handleClosePanel()
+      }
+    })
+
     // Esri World Boundaries and Places (labels + roads)
     const labelsLayer = L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
@@ -482,8 +487,6 @@ export default function MapPage() {
     }
   }, [tnNode])
 
-  const currentPopupPlotIdRef = useRef(null)
-
   // ── Pin / Unpin & Floating Card Controls ────────────────────────────
   const togglePin = (e) => {
     e?.stopPropagation()
@@ -496,21 +499,10 @@ export default function MapPage() {
           y: Math.max(70, Math.min(window.innerHeight - 100, rect.top))
         })
       }
-      if (popupRef.current) {
-        popupRef.current.off('remove')
-        popupRef.current.remove()
-        popupRef.current = null
-        currentPopupPlotIdRef.current = null
-      }
-      setPopupContainer(null)
       setIsPinned(false)
     } else {
-      // Pinning back: re-attach to plot popup
+      // Pinning back: snap directly above the plot
       setIsPinned(true)
-      currentPopupPlotIdRef.current = null
-      if (mapInstanceRef.current && selectedPlot?.lat && selectedPlot?.lon) {
-        mapInstanceRef.current.panTo([selectedPlot.lat, selectedPlot.lon], { animate: true })
-      }
     }
   }
 
@@ -553,68 +545,79 @@ export default function MapPage() {
     }
   }, [isDragging, floatingPos])
 
-  // ── Leaflet Popup to React Portal Integration ──────────────────────
+  // ── Pinned Card Position Tracking (Pure React, No Leaflet Popup) ────
   useEffect(() => {
-    if (!selectedPlot || !mapInstanceRef.current || !isPinned) {
-      setPopupContainer(null)
-      if (popupRef.current) {
-        popupRef.current.off('remove')
-        popupRef.current.remove()
-        popupRef.current = null
+    const map = mapInstanceRef.current
+    if (!map || !selectedPlot || !isPinned) return
+
+    const getCenterLatLng = () => {
+      if (selectedPlot.lat != null && selectedPlot.lon != null) {
+        return L.latLng(selectedPlot.lat, selectedPlot.lon)
       }
-      currentPopupPlotIdRef.current = null
-      return
-    }
-
-    // If we already have a popup for this plot, do nothing. 
-    // The React portal will automatically re-render the updated selectedPlot data into the existing container!
-    if (currentPopupPlotIdRef.current === selectedPlot.id) {
-      return
-    }
-
-    currentPopupPlotIdRef.current = selectedPlot.id
-
-    const center = selectedPlot.lat && selectedPlot.lon 
-      ? L.latLng(selectedPlot.lat, selectedPlot.lon) 
-      : null
-
-    if (!center) return
-
-    // Create a container for the React portal
-    const container = document.createElement('div')
-    L.DomEvent.disableClickPropagation(container)
-    L.DomEvent.disableScrollPropagation(container)
-    setPopupContainer(container)
-
-    // Detach old popup tracking before opening a new one so `remove` event doesn't clear state
-    if (popupRef.current) {
-      popupRef.current.off('remove')
-      popupRef.current.remove()
-      popupRef.current = null
-    }
-
-    const popup = L.popup({
-      minWidth: 380,
-      maxWidth: 380,
-      closeButton: false,
-      className: 'react-portal-popup',
-      autoPanPadding: [20, 20]
-    })
-      .setLatLng(center)
-      .setContent(container)
-      .openOn(mapInstanceRef.current)
-
-    popupRef.current = popup
-
-    // Unselect plot when leaflet popup is closed by user clicking outside
-    popup.on('remove', () => {
-      if (popupRef.current === popup && isPinned) {
-        setSelectedPlot(null)
-        currentPopupPlotIdRef.current = null
+      if (selectedLayerRef.current?.layer) {
+        return selectedLayerRef.current.layer.getBounds().getCenter()
       }
-    })
+      return null
+    }
 
+    const updatePinnedPos = () => {
+      const latlng = getCenterLatLng()
+      if (!latlng) return
+      const pt = map.latLngToContainerPoint(latlng)
+      const x = Math.round(pt.x)
+      const y = Math.round(pt.y)
+      if (panelRef.current) {
+        panelRef.current.style.transition = 'none'
+        panelRef.current.style.left = `${x}px`
+        panelRef.current.style.top = `${y}px`
+      }
+      setPinnedPos({ x, y })
+    }
+
+    const handleZoomAnim = (e) => {
+      const latlng = getCenterLatLng()
+      if (!latlng || !panelRef.current) return
+      const newLayerPoint = map._latLngToNewLayerPoint(latlng, e.zoom, e.center)
+      const pt = map.layerPointToContainerPoint(newLayerPoint)
+      const x = Math.round(pt.x)
+      const y = Math.round(pt.y)
+      panelRef.current.style.transition = 'left 0.25s cubic-bezier(0,0,0.25,1), top 0.25s cubic-bezier(0,0,0.25,1)'
+      panelRef.current.style.left = `${x}px`
+      panelRef.current.style.top = `${y}px`
+      setPinnedPos({ x, y })
+    }
+
+    updatePinnedPos()
+    map.on('move zoom zoomend viewreset', updatePinnedPos)
+    map.on('zoomanim', handleZoomAnim)
+
+    const panelEl = panelRef.current
+    return () => {
+      map.off('move zoom zoomend viewreset', updatePinnedPos)
+      map.off('zoomanim', handleZoomAnim)
+      if (panelEl) {
+        panelEl.style.transition = 'none'
+      }
+    }
   }, [selectedPlot, isPinned])
+
+  // ── Sync Parcel Center Label Visibility with Selected Plot ─────────
+  useEffect(() => {
+    selectedPlotRef.current = selectedPlot
+    const map = mapInstanceRef.current
+    if (!map) return
+    const zoom = map.getZoom()
+
+    layersRef.current.forEach(({ labelMarker, plot }) => {
+      if (selectedPlot && selectedPlot.id === plot.id) {
+        // Hide tiny label for the open plot
+        if (map.hasLayer(labelMarker)) map.removeLayer(labelMarker)
+      } else if (currentStep === 'READY' && zoom >= 14) {
+        // Redisplay tiny label when closed or for non-selected plots
+        if (!map.hasLayer(labelMarker)) labelMarker.addTo(map)
+      }
+    })
+  }, [selectedPlot, currentStep])
 
 
   // ── Flow Handlers ───────────────────────────────────────────────────
@@ -841,7 +844,8 @@ export default function MapPage() {
           geoLayer.setStyle(PARCEL_STYLE)
         }
       })
-      geoLayer.on('click', () => {
+      geoLayer.on('click', (e) => {
+        if (e) L.DomEvent.stopPropagation(e)
         handleSelectPlot(plot, geoLayer, bounds)
       })
 
@@ -851,7 +855,11 @@ export default function MapPage() {
     // Update labels on zoom
     function updateLabels() {
       const zoom = map.getZoom()
-      layersRef.current.forEach(({ labelMarker }) => {
+      layersRef.current.forEach(({ labelMarker, plot }) => {
+        if (selectedPlotRef.current?.id === plot.id) {
+          if (map.hasLayer(labelMarker)) map.removeLayer(labelMarker)
+          return
+        }
         if (currentStep === 'READY' && zoom >= 14) {
           if (!map.hasLayer(labelMarker)) labelMarker.addTo(map)
           // Show/hide name part
@@ -878,13 +886,17 @@ export default function MapPage() {
     const item = layersRef.current.find(l => l.plot.id === plot.id)
     if (!item) return
     handleSelectPlot(plot, item.layer, item.layer.getBounds())
-    const layers = item.layer.getLayers()
-    if (layers.length > 0) {
-      layers[0].openPopup()
-    }
   }
 
   async function handleSelectPlot(plot, geoLayer, bounds) {
+    selectedPlotRef.current = plot
+
+    // Hide tiny center label for this plot while modal is open
+    const currentItem = layersRef.current.find(l => l.plot.id === plot.id)
+    if (currentItem?.labelMarker && mapInstanceRef.current?.hasLayer(currentItem.labelMarker)) {
+      mapInstanceRef.current.removeLayer(currentItem.labelMarker)
+    }
+
     // Reset previous selected
     if (selectedLayerRef.current) {
       selectedLayerRef.current.layer.setStyle(PARCEL_STYLE)
@@ -954,6 +966,7 @@ export default function MapPage() {
   }
 
   function handleClosePanel() {
+    selectedPlotRef.current = null
     setSelectedPlot(null)
     setIsPinned(true)
     clearRouteAndNearby()
@@ -963,6 +976,12 @@ export default function MapPage() {
     }
     const map = mapInstanceRef.current
     if (map) {
+      const zoom = map.getZoom()
+      if (currentStep === 'READY' && zoom >= 14) {
+        layersRef.current.forEach(({ labelMarker }) => {
+          if (!map.hasLayer(labelMarker)) labelMarker.addTo(map)
+        })
+      }
       const container = map.getContainer()
       if (container) container.style.pointerEvents = ''
       map.dragging?.enable()
@@ -1222,18 +1241,25 @@ export default function MapPage() {
           </div>
         )}
 
-        {/* Left Side Info Panel rendered inside Leaflet Popup (Pinned) or Floating (Unpinned) */}
-        {selectedPlot && (isPinned ? popupContainer : true) && createPortal(
+        {/* Left Side Info Panel rendered directly (Pinned directly above plot, or Floating when Unpinned) */}
+        {selectedPlot && (
           <div 
             ref={panelRef}
-            className={`left-info-panel ${isPinned ? 'react-popup-panel' : 'unpinned-floating-card'}`}
-            style={!isPinned ? {
+            className={`left-info-panel ${isPinned ? 'pinned-plot-card' : 'unpinned-floating-card'}`}
+            style={isPinned ? {
+              position: 'absolute',
+              left: `${pinnedPos.x}px`,
+              top: `${pinnedPos.y}px`,
+              transform: 'translate(-50%, -100%) translateY(-16px)',
+              zIndex: 1000,
+              pointerEvents: 'auto',
+            } : {
               position: 'fixed',
               left: `${floatingPos.x}px`,
               top: `${floatingPos.y}px`,
               zIndex: 2000,
               boxShadow: '0 20px 50px -10px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.08)',
-            } : {}}
+            }}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
@@ -1768,8 +1794,7 @@ export default function MapPage() {
               )}
 
             </div>
-          </div>,
-          isPinned ? popupContainer : document.body
+          </div>
         )}
 
         {/* Selection Flow Modal Overlay */}
