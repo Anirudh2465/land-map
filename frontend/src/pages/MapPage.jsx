@@ -123,6 +123,7 @@ export default function MapPage() {
   const [isDragging, setIsDragging] = useState(false)
   const dragRef = useRef({ startX: 0, startY: 0, initialLeft: 0, initialTop: 0 })
   const panelRef = useRef(null)
+  const flyToSafetyTimerRef = useRef(null)
 
   // Selection flow states
   const [currentStep, setCurrentStep] = useState(districtId ? 'READY' : 'REGION')
@@ -303,7 +304,23 @@ export default function MapPage() {
       minZoom: 3.5,
       maxZoom: 22,
       zoomControl: true,
+      zoomAnimationThreshold: 8,
     })
+
+    // Monkey-patch _stop to prevent corrupted zoom animation state when flyTo or animations are interrupted
+    const originalStop = map._stop
+    map._stop = function () {
+      const wasAnimatingZoom = this._animatingZoom
+      const res = originalStop.apply(this, arguments)
+      if (wasAnimatingZoom) {
+        this._animatingZoom = false
+        if (this._mapPane) {
+          L.DomUtil.removeClass(this._mapPane, 'leaflet-zoom-anim')
+        }
+        this._resetView(this.getCenter(), this.getZoom())
+      }
+      return res
+    }
     
     // Create dedicated labels pane so overlay layers (places/roads) stay above tile layers
     map.createPane('labelsPane')
@@ -370,6 +387,10 @@ export default function MapPage() {
 
     // Cleanup on unmount
     return () => {
+      if (flyToSafetyTimerRef.current) {
+        clearTimeout(flyToSafetyTimerRef.current)
+        flyToSafetyTimerRef.current = null
+      }
       map.remove()
       mapInstanceRef.current = null
       labelsLayerRef.current = null
@@ -561,6 +582,8 @@ export default function MapPage() {
 
     // Create a container for the React portal
     const container = document.createElement('div')
+    L.DomEvent.disableClickPropagation(container)
+    L.DomEvent.disableScrollPropagation(container)
     setPopupContainer(container)
 
     // Detach old popup tracking before opening a new one so `remove` event doesn't clear state
@@ -789,11 +812,9 @@ export default function MapPage() {
 
       // Note: Custom React popup will be bound on selection
 
-      // Compute center for label (shifted slightly lower than center so it remains visible below popup)
+      // Compute center for label (centered on the polygon)
       const bounds = geoLayer.getBounds()
-      const center = bounds.getCenter()
-      const height = bounds.getNorth() - bounds.getSouth()
-      const labelPosition = L.latLng(center.lat - height * 0.15, center.lng)
+      const labelPosition = bounds.getCenter()
 
       // Create a label marker (DivIcon) — toggled by zoom
       const labelMarker = L.marker(labelPosition, {
@@ -876,38 +897,52 @@ export default function MapPage() {
     setIsPinned(true)
     setAddressViewMode('db')
 
-    // Wait for React to render the panel and physically resize the map container
-    setTimeout(() => {
-      const map = mapInstanceRef.current
-      if (map) {
-        map.dragging?.disable()
-        map.touchZoom?.disable()
-        map.doubleClickZoom?.disable()
-        map.scrollWheelZoom?.disable()
-        map.boxZoom?.disable()
-        map.keyboard?.disable()
-
-        map.invalidateSize()
-        map.flyTo(bounds.getCenter(), 18, {
-          animate: true,
-          duration: 1.5
-        })
-
-        const onEnd = () => {
-          map.dragging?.enable()
-          map.touchZoom?.enable()
-          map.doubleClickZoom?.enable()
-          map.scrollWheelZoom?.enable()
-          map.boxZoom?.enable()
-          map.keyboard?.enable()
-          map.off('moveend', onEnd)
-          clearTimeout(safetyTimer)
-        }
-
-        const safetyTimer = setTimeout(onEnd, 1600)
-        map.once('moveend', onEnd)
+    const map = mapInstanceRef.current
+    if (map) {
+      if (flyToSafetyTimerRef.current) {
+        clearTimeout(flyToSafetyTimerRef.current)
+        flyToSafetyTimerRef.current = null
       }
-    }, 150)
+
+      // Stop any prior animation cleanly
+      map.stop()
+
+      const container = map.getContainer()
+      if (container) {
+        container.style.pointerEvents = 'none'
+      }
+      map.dragging?.disable()
+      map.touchZoom?.disable()
+      map.doubleClickZoom?.disable()
+      map.scrollWheelZoom?.disable()
+      map.boxZoom?.disable()
+      map.keyboard?.disable()
+
+      map.flyTo(bounds.getCenter(), 18, {
+        animate: true,
+        duration: 1.2
+      })
+
+      const onEnd = () => {
+        if (container) {
+          container.style.pointerEvents = ''
+        }
+        map.dragging?.enable()
+        map.touchZoom?.enable()
+        map.doubleClickZoom?.enable()
+        map.scrollWheelZoom?.enable()
+        map.boxZoom?.enable()
+        map.keyboard?.enable()
+        map.off('moveend', onEnd)
+        if (flyToSafetyTimerRef.current) {
+          clearTimeout(flyToSafetyTimerRef.current)
+          flyToSafetyTimerRef.current = null
+        }
+      }
+
+      flyToSafetyTimerRef.current = setTimeout(onEnd, 1400)
+      map.once('moveend', onEnd)
+    }
 
     // Fetch full detail (with documents)
     try {
@@ -925,6 +960,21 @@ export default function MapPage() {
     if (selectedLayerRef.current) {
       selectedLayerRef.current.layer.setStyle(PARCEL_STYLE)
       selectedLayerRef.current = null
+    }
+    const map = mapInstanceRef.current
+    if (map) {
+      const container = map.getContainer()
+      if (container) container.style.pointerEvents = ''
+      map.dragging?.enable()
+      map.touchZoom?.enable()
+      map.doubleClickZoom?.enable()
+      map.scrollWheelZoom?.enable()
+      map.boxZoom?.enable()
+      map.keyboard?.enable()
+      if (flyToSafetyTimerRef.current) {
+        clearTimeout(flyToSafetyTimerRef.current)
+        flyToSafetyTimerRef.current = null
+      }
     }
   }
 
@@ -1038,7 +1088,16 @@ export default function MapPage() {
     
     try {
       const res = await getNearbyPlaces(selectedPlot.lat, selectedPlot.lon, radiusToUse, category)
-      const elements = res.elements || []
+      const rawElements = res.elements || []
+      const elements = rawElements.filter(el => {
+        if (el.lat == null || el.lon == null) return false
+        const d = L.latLng(el.lat, el.lon).distanceTo(L.latLng(selectedPlot.lat, selectedPlot.lon))
+        return d <= radiusToUse
+      }).sort((a, b) => {
+        const dA = L.latLng(a.lat, a.lon).distanceTo(L.latLng(selectedPlot.lat, selectedPlot.lon))
+        const dB = L.latLng(b.lat, b.lon).distanceTo(L.latLng(selectedPlot.lat, selectedPlot.lon))
+        return dA - dB
+      })
       setNearbyPlaces(elements)
       
       if (nearbyLayerRef.current) {
@@ -1175,6 +1234,8 @@ export default function MapPage() {
               zIndex: 2000,
               boxShadow: '0 20px 50px -10px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.08)',
             } : {}}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
           >
             {/* Blue Header Bit */}
             <div 
@@ -1490,14 +1551,22 @@ export default function MapPage() {
 
                     {/* Autocomplete Dropdown */}
                     {showSuggestions && (
-                      <div style={{ background: '#fff', border: '1px solid var(--color-border)', borderRadius: '8px', maxHeight: '200px', overflowY: 'auto', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', marginTop: '0.25rem' }}>
+                      <div 
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ background: '#fff', border: '1px solid var(--color-border)', borderRadius: '8px', maxHeight: '200px', overflowY: 'auto', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', marginTop: '0.25rem' }}
+                      >
                         {isGeocoding ? (
                           <div style={{ padding: '0.75rem', fontSize: '0.85rem', color: 'var(--color-text-muted)', textAlign: 'center' }}>Searching...</div>
                         ) : geocodeResults.length > 0 ? (
                           geocodeResults.map((item, idx) => (
                             <div 
                               key={idx} 
-                              onClick={() => handleSelectSuggestion(item)}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleSelectSuggestion(item)
+                              }}
                               style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', borderBottom: idx < geocodeResults.length - 1 ? '1px solid #f1f5f9' : 'none', cursor: 'pointer' }}
                               onMouseOver={(e) => e.currentTarget.style.background = '#f8fafc'}
                               onMouseOut={(e) => e.currentTarget.style.background = '#fff'}
@@ -1615,7 +1684,7 @@ export default function MapPage() {
                   </div>
                   
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                    {['Hospital', 'School', 'Restaurant', 'Attraction', 'ATM', 'Park', 'Supermarket', 'Pharmacy', 'Cafe', 'Bank'].map(cat => (
+                    {['Hospital', 'School', 'Restaurant', 'Park', 'Supermarket', 'Pharmacy', 'Bank'].map(cat => (
                       <button
                         key={cat}
                         className={`btn ${nearbyCategory === cat ? 'btn-primary' : 'btn-outline'} btn-sm`}

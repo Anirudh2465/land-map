@@ -73,6 +73,7 @@ services:
       MINIO_BUCKET: lpms-documents
       MINIO_SECURE: "false"
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      MAPBOX_ACCESS_TOKEN: ${MAPBOX_ACCESS_TOKEN:-pk.eyJ1IjoibmFyZXNoLXg4NiIsImEiOiJjbXVpZ2p3c2gxNTUwMnlzaW4yNjY3ZzlnIn0.E6jWlWQb3mfcSiCycR-eHA}
     ports:
       - "8000:8000"
     volumes:
