@@ -36,18 +36,12 @@
 │   ├── requirements.txt                 # Python package dependencies
 │   └── seed.py                          # Idempotent script that seeds the admin user and Coimbatore hierarchy
 ├── data/                                # Sample Data for Testing
-│   ├── provided/                        # Officially provided dataset
-│   │   ├── suganya.kml                  # Real-world plot KML
-│   │   └── docs/                        # Extensive official documents
-│   │       ├── Suganya_Aerial_Photo.pdf
-│   │       ├── Suganya_EC_document.pdf
-│   │       ├── Suganya_FMB_sketch.pdf
-│   │       ├── Suganya_Plan_approval.pdf
-│   │       ├── Suganya_building_Drawing.pdf
-│   │       ├── Suganya_buildingpermit.pdf
-│   │       ├── Suganya_deed.pdf
-│   │       ├── Suganya_parent_document.pdf
-│   │       └── Suganya_patta_chitta.pdf
+│   ├── provided/                        # Officially provided datasets
+│   │   ├── Bogampatti/                  # 36.5-acre consolidated estate (KML, Deed, Patta/FMB, EC, Tax)
+│   │   │   └── manifest.json            # Field & document mapping manifest
+│   │   ├── Suganya/                     # Residential site with building (KML, Deed, FMB, Patta, Permits)
+│   │   │   └── manifest.json            # Field & document mapping manifest
+│   │   └── seed_provided.py             # Automated multi-plot ingestion script for Docker/host
 │   └── samples/
 │       ├── Gandhipuram_Plot_B.kml       # Sample plot KML file
 │       ├── Irugur_Plot_A.kml            # Sample plot KML file
@@ -280,3 +274,5 @@
 - Implemented nearby points of interest (Hospitals, Schools, etc.) with custom Leaflet markers rendering around the selected plot.
 - Refined Nearby POIs: Added dynamic search radius (1km-10km), removed disruptive map zoom on empty results, and integrated travel-mode specific routing fetching.
 - Map Layers Upgrade: Introduced a Google Maps-style layer switcher allowing toggle between Default (Carto Voyager), Satellite (Esri Imagery), and Terrain (Esri Topo) basemaps. Integrated Carto API key configuration via `.env` to prevent watermark blocks, and properly scaled Terrain max-zoom limitations.
+- Automated Ingestion Pipeline: Added `manifest.json` schemas for provided real-world datasets (`Bogampatti` and `Suganya`) and created `data/provided/seed_provided.py` to automate parcel registration, PostGIS area calculations, reverse-geocoding, and MinIO document storage inside Docker or directly from the host.
+- Map & Floating Card Upgrades: Fixed Places/Boundaries labels layer behavior by rendering in a dedicated z-index pane (zIndex 350) strictly synchronized to Satellite view (preventing overlap on Carto/Terrain basemaps and during selection flow). Standardized Google Fonts (`Plus Jakarta Sans` / `Inter`) across all floating plot details card elements. Added pin/unpin toggle button and smooth viewport dragging for the floating plot details card.

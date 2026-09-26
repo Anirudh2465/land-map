@@ -60,6 +60,13 @@ To evaluate the parcel ingestion workflow, sample data has been provided in the 
 4. The parcels you created will render as precise GeoJSON polygons.
 5. Click on any parcel polygon to view its details, exact coordinates, and access inline previews and secure downloads for the attached FMB, Patta, and Deed documents.
 
+### 3. Automated Ingestion (Provided Datasets)
+To automatically register the provided real-world datasets for **Suganya** (`SUG-01`) and **Bogampatti** (`BOG-01`) with their full KML boundary geometry and all associated official PDF documents (Deed, Patta, FMB, EC, Building Permits, Tax Receipts), simply run:
+```bash
+docker exec lpms_backend python /data/provided/seed_provided.py
+```
+*(Or directly from your host environment: `python data/provided/seed_provided.py`)*
+
 ## System Architecture Overview
 
 - **Frontend:** React 19, Vite, Leaflet, React-Router

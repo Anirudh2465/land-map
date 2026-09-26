@@ -26,7 +26,7 @@ services:
     restart: unless-stopped
 
   minio:
-    image: quay.io/minio/minio:latest
+    image: cgr.dev/chainguard/minio:latest
     container_name: lpms_minio
     command: server /data --console-address ":9001"
     environment:
@@ -39,13 +39,13 @@ services:
       - minio_data:/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD-SHELL", "mc ready local 2>/dev/null || mc alias set local http://127.0.0.1:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD >/dev/null; mc ready local"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   createbuckets:
-    image: quay.io/minio/mc:latest
+    image: quay.io/minio/minio:latest
     container_name: lpms_minio_init
     depends_on:
       minio:
@@ -66,7 +66,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://lpms_user:lpms_password@db:5432/lpms
+      DATABASE_URL: postgresql+psycopg2://lpms_user:lpms_password@db:5432/lpms
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: lpms_minio_user
       MINIO_SECRET_KEY: lpms_minio_password
@@ -77,6 +77,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - ./data:/data
     depends_on:
       db:
         condition: service_healthy
@@ -93,7 +94,7 @@ services:
       CHOKIDAR_USEPOLLING: "true"
       VITE_API_URL: http://localhost:8000
     ports:
-      - "5174:5173"
+      - "5173:5173"
     volumes:
       - ./frontend:/app
       - /app/node_modules

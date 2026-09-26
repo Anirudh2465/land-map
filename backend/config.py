@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "postgresql://lpms_user:lpms_password@db:5432/lpms"
+    DATABASE_URL: str = "postgresql+psycopg2://lpms_user:lpms_password@db:5432/lpms"
     SECRET_KEY: str = "supersecretkey_change_in_production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 1 week for dev

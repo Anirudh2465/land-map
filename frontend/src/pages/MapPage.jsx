@@ -20,7 +20,7 @@ import { getDocumentUrl } from '../api/documents'
 import { getNodeByName, getCountries, getChildren, getNode } from '../api/geo'
 import { geocodeAddress, getRoute, getNearbyPlaces } from '../api/routing'
 import Header from '../components/Header'
-import { Search, ChevronDown, ChevronUp, X, FileText, Download, Eye, ChevronRight, MapPin, Navigation, ArrowLeftRight, Map as MapIcon, Clock, Car, Bike, Footprints } from 'lucide-react'
+import { Search, ChevronDown, ChevronUp, X, FileText, Download, Eye, ChevronRight, MapPin, Navigation, ArrowLeftRight, Map as MapIcon, Clock, Car, Bike, Footprints, Pin, PinOff } from 'lucide-react'
 
 // Unit conversion constants
 const AREA_UNITS = ['sqm', 'sqft', 'acres', 'hectares']
@@ -117,6 +117,12 @@ export default function MapPage() {
   const [pdfModal, setPdfModal] = useState(null) // { url, docType }
   const [pdfLoading, setPdfLoading] = useState(false)
   const [popupContainer, setPopupContainer] = useState(null)
+  const [activeBasemap, setActiveBasemap] = useState('Satellite')
+  const [isPinned, setIsPinned] = useState(true)
+  const [floatingPos, setFloatingPos] = useState({ x: 80, y: 120 })
+  const [isDragging, setIsDragging] = useState(false)
+  const dragRef = useRef({ startX: 0, startY: 0, initialLeft: 0, initialTop: 0 })
+  const panelRef = useRef(null)
 
   // Selection flow states
   const [currentStep, setCurrentStep] = useState(districtId ? 'READY' : 'REGION')
@@ -299,6 +305,11 @@ export default function MapPage() {
       zoomControl: true,
     })
     
+    // Create dedicated labels pane so overlay layers (places/roads) stay above tile layers
+    map.createPane('labelsPane')
+    map.getPane('labelsPane').style.zIndex = '350'
+    map.getPane('labelsPane').style.pointerEvents = 'none'
+
     // 1. Satellite Base
     const satelliteLowRes = L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -329,20 +340,24 @@ export default function MapPage() {
     )
 
     const baseMaps = {
-      "Default": defaultMap,
       "Satellite": satelliteGroup,
+      "Default": defaultMap,
       "Terrain": terrainMap
     }
 
-    // Default to Default Map
-    defaultMap.addTo(map)
+    // Default to Satellite Map initially
+    satelliteGroup.addTo(map)
 
     L.control.layers(baseMaps, null, { position: 'bottomright' }).addTo(map)
+
+    map.on('baselayerchange', (e) => {
+      setActiveBasemap(e.name)
+    })
 
     // Esri World Boundaries and Places (labels + roads)
     const labelsLayer = L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-      { maxNativeZoom: 18, maxZoom: 22 }
+      { pane: 'labelsPane', maxNativeZoom: 18, maxZoom: 22 }
     )
     labelsLayerRef.current = labelsLayer
 
@@ -368,10 +383,17 @@ export default function MapPage() {
     if (!map) return
 
     if (currentStep === 'READY') {
-      // Show reference labels & boundaries
-      if (labelsLayer && !map.hasLayer(labelsLayer)) {
-        labelsLayer.addTo(map)
+      // Show reference labels & boundaries ONLY on Satellite basemap
+      if (activeBasemap === 'Satellite') {
+        if (labelsLayer && !map.hasLayer(labelsLayer)) {
+          labelsLayer.addTo(map)
+        }
+      } else {
+        if (labelsLayer && map.hasLayer(labelsLayer)) {
+          map.removeLayer(labelsLayer)
+        }
       }
+
       // Show parcel GeoJSON polygons
       layersRef.current.forEach(({ layer }) => {
         if (!map.hasLayer(layer)) {
@@ -379,7 +401,7 @@ export default function MapPage() {
         }
       })
     } else {
-      // Hide reference labels & boundaries
+      // In selection flow (non-READY steps): hide reference labels & boundaries
       if (labelsLayer && map.hasLayer(labelsLayer)) {
         map.removeLayer(labelsLayer)
       }
@@ -393,11 +415,13 @@ export default function MapPage() {
         }
       })
     }
-  }, [currentStep, plots])
+  }, [currentStep, plots, activeBasemap])
+
 
   // ── Plot Selection ─────────────────────────────────────────────────────
   const selectPlot = (plot) => {
     setSelectedPlot(plot)
+    setIsPinned(true)
     setActivePanelTab('details')
     clearRouteAndNearby()
     setAddressViewMode('db')
@@ -439,11 +463,81 @@ export default function MapPage() {
 
   const currentPopupPlotIdRef = useRef(null)
 
+  // ── Pin / Unpin & Floating Card Controls ────────────────────────────
+  const togglePin = (e) => {
+    e?.stopPropagation()
+    if (isPinned) {
+      // Unpinning: capture current bounding rect of the card
+      if (panelRef.current) {
+        const rect = panelRef.current.getBoundingClientRect()
+        setFloatingPos({
+          x: Math.max(10, Math.min(window.innerWidth - 390, rect.left)),
+          y: Math.max(70, Math.min(window.innerHeight - 100, rect.top))
+        })
+      }
+      if (popupRef.current) {
+        popupRef.current.off('remove')
+        popupRef.current.remove()
+        popupRef.current = null
+        currentPopupPlotIdRef.current = null
+      }
+      setPopupContainer(null)
+      setIsPinned(false)
+    } else {
+      // Pinning back: re-attach to plot popup
+      setIsPinned(true)
+      currentPopupPlotIdRef.current = null
+      if (mapInstanceRef.current && selectedPlot?.lat && selectedPlot?.lon) {
+        mapInstanceRef.current.panTo([selectedPlot.lat, selectedPlot.lon], { animate: true })
+      }
+    }
+  }
+
+  const handleHeaderMouseDown = (e) => {
+    if (isPinned) return
+    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select')) return
+    e.preventDefault()
+
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      initialLeft: floatingPos.x,
+      initialTop: floatingPos.y,
+    }
+    setIsDragging(true)
+  }
+
+  useEffect(() => {
+    if (!isDragging) return
+
+    const handleMouseMove = (e) => {
+      const deltaX = e.clientX - dragRef.current.startX
+      const deltaY = e.clientY - dragRef.current.startY
+      
+      const newX = Math.max(10, Math.min(window.innerWidth - 390, dragRef.current.initialLeft + deltaX))
+      const newY = Math.max(70, Math.min(window.innerHeight - 100, dragRef.current.initialTop + deltaY))
+      
+      setFloatingPos({ x: newX, y: newY })
+    }
+
+    const handleMouseUp = () => {
+      setIsDragging(false)
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDragging, floatingPos])
+
   // ── Leaflet Popup to React Portal Integration ──────────────────────
   useEffect(() => {
-    if (!selectedPlot || !mapInstanceRef.current) {
+    if (!selectedPlot || !mapInstanceRef.current || !isPinned) {
       setPopupContainer(null)
       if (popupRef.current) {
+        popupRef.current.off('remove')
         popupRef.current.remove()
         popupRef.current = null
       }
@@ -471,6 +565,7 @@ export default function MapPage() {
 
     // Detach old popup tracking before opening a new one so `remove` event doesn't clear state
     if (popupRef.current) {
+      popupRef.current.off('remove')
       popupRef.current.remove()
       popupRef.current = null
     }
@@ -490,13 +585,14 @@ export default function MapPage() {
 
     // Unselect plot when leaflet popup is closed by user clicking outside
     popup.on('remove', () => {
-      if (popupRef.current === popup) {
+      if (popupRef.current === popup && isPinned) {
         setSelectedPlot(null)
         currentPopupPlotIdRef.current = null
       }
     })
 
-  }, [selectedPlot])
+  }, [selectedPlot, isPinned])
+
 
   // ── Flow Handlers ───────────────────────────────────────────────────
   async function handleSelectIndia() {
@@ -693,12 +789,14 @@ export default function MapPage() {
 
       // Note: Custom React popup will be bound on selection
 
-      // Compute center for label
+      // Compute center for label (shifted slightly lower than center so it remains visible below popup)
       const bounds = geoLayer.getBounds()
       const center = bounds.getCenter()
+      const height = bounds.getNorth() - bounds.getSouth()
+      const labelPosition = L.latLng(center.lat - height * 0.15, center.lng)
 
       // Create a label marker (DivIcon) — toggled by zoom
-      const labelMarker = L.marker(center, {
+      const labelMarker = L.marker(labelPosition, {
         icon: L.divIcon({
           className: '',
           html: `<div class="parcel-label" data-plotid="${plot.id}">
@@ -775,16 +873,39 @@ export default function MapPage() {
     selectedLayerRef.current = { layer: geoLayer }
 
     setSelectedPlot(plot)
+    setIsPinned(true)
     setAddressViewMode('db')
 
     // Wait for React to render the panel and physically resize the map container
     setTimeout(() => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.invalidateSize()
-        mapInstanceRef.current.flyTo(bounds.getCenter(), 18, {
+      const map = mapInstanceRef.current
+      if (map) {
+        map.dragging?.disable()
+        map.touchZoom?.disable()
+        map.doubleClickZoom?.disable()
+        map.scrollWheelZoom?.disable()
+        map.boxZoom?.disable()
+        map.keyboard?.disable()
+
+        map.invalidateSize()
+        map.flyTo(bounds.getCenter(), 18, {
           animate: true,
           duration: 1.5
         })
+
+        const onEnd = () => {
+          map.dragging?.enable()
+          map.touchZoom?.enable()
+          map.doubleClickZoom?.enable()
+          map.scrollWheelZoom?.enable()
+          map.boxZoom?.enable()
+          map.keyboard?.enable()
+          map.off('moveend', onEnd)
+          clearTimeout(safetyTimer)
+        }
+
+        const safetyTimer = setTimeout(onEnd, 1600)
+        map.once('moveend', onEnd)
       }
     }, 150)
 
@@ -799,6 +920,7 @@ export default function MapPage() {
 
   function handleClosePanel() {
     setSelectedPlot(null)
+    setIsPinned(true)
     clearRouteAndNearby()
     if (selectedLayerRef.current) {
       selectedLayerRef.current.layer.setStyle(PARCEL_STYLE)
@@ -1041,19 +1163,34 @@ export default function MapPage() {
           </div>
         )}
 
-        {/* Left Side Info Panel rendered inside Leaflet Popup */}
-        {selectedPlot && popupContainer && createPortal(
-          <div className="left-info-panel react-popup-panel">
+        {/* Left Side Info Panel rendered inside Leaflet Popup (Pinned) or Floating (Unpinned) */}
+        {selectedPlot && (isPinned ? popupContainer : true) && createPortal(
+          <div 
+            ref={panelRef}
+            className={`left-info-panel ${isPinned ? 'react-popup-panel' : 'unpinned-floating-card'}`}
+            style={!isPinned ? {
+              position: 'fixed',
+              left: `${floatingPos.x}px`,
+              top: `${floatingPos.y}px`,
+              zIndex: 2000,
+              boxShadow: '0 20px 50px -10px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.08)',
+            } : {}}
+          >
             {/* Blue Header Bit */}
-            <div style={{
-              padding: '1.25rem',
-              borderBottom: '1px solid var(--color-border)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%)',
-              color: '#fff',
-            }}>
+            <div 
+              onMouseDown={handleHeaderMouseDown}
+              style={{
+                padding: '1.25rem',
+                borderBottom: '1px solid var(--color-border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%)',
+                color: '#fff',
+                cursor: !isPinned ? (isDragging ? 'grabbing' : 'grab') : 'default',
+                userSelect: 'none'
+              }}
+            >
               <div>
                 <div style={{ fontWeight: '700', fontSize: '1.2rem', letterSpacing: '-0.01em', lineHeight: '1.2' }}>
                   {selectedPlot.plot_number || 'Parcel'}
@@ -1062,25 +1199,49 @@ export default function MapPage() {
                   {selectedPlot.property_name || 'Unnamed Parcel'}
                 </div>
               </div>
-              <button
-                onClick={handleClosePanel}
-                style={{
-                  background: 'rgba(255,255,255,0.18)',
-                  border: 'none',
-                  color: '#fff',
-                  borderRadius: '50%',
-                  width: '32px',
-                  height: '32px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'background 0.15s ease'
-                }}
-                aria-label="Close panel"
-              >
-                <X size={18} />
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={togglePin}
+                  title={isPinned ? "Unpin card to drag freely across screen" : "Pin card back to plot"}
+                  style={{
+                    background: isPinned ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.38)',
+                    border: 'none',
+                    color: '#fff',
+                    borderRadius: '50%',
+                    width: '32px',
+                    height: '32px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.15s ease'
+                  }}
+                  aria-label={isPinned ? "Unpin card" : "Pin card"}
+                >
+                  {isPinned ? <Pin size={16} /> : <PinOff size={16} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClosePanel}
+                  style={{
+                    background: 'rgba(255,255,255,0.18)',
+                    border: 'none',
+                    color: '#fff',
+                    borderRadius: '50%',
+                    width: '32px',
+                    height: '32px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'background 0.15s ease'
+                  }}
+                  aria-label="Close panel"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
             {/* Tab Bar */}
@@ -1539,7 +1700,7 @@ export default function MapPage() {
 
             </div>
           </div>,
-          popupContainer
+          isPinned ? popupContainer : document.body
         )}
 
         {/* Selection Flow Modal Overlay */}

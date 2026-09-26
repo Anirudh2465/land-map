@@ -1441,6 +1441,13 @@ input, select, textarea { font: inherit; }
   display: none; /* Hide arrow for cleaner floating look */
 }
 
+.left-info-panel,
+.left-info-panel *,
+.react-portal-popup,
+.react-portal-popup * {
+  font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+
 .left-info-panel {
   position: relative;
   width: 380px;
@@ -1458,6 +1465,12 @@ input, select, textarea { font: inherit; }
   overflow: hidden;
   animation: popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+.unpinned-floating-card {
+  animation: none !important;
+  user-select: auto;
+}
+
 
 @keyframes popIn {
   from {

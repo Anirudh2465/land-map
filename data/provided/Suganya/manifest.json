@@ -1,0 +1,21 @@
+{
+  "land_id": "MAD-01",
+  "land_name": "Madukkari Site #1",
+  "owner_name": "F. Suganya Jenifer",
+  "plot_type": "Residential Plot with Building",
+  "year_of_registration": "2011",
+  "landmark": "Near Madukkari Railway Station",
+  "address": "Site No. 199, Sri Rajeshwari Nagar, Madukkarai\nCoimbatore, Tamil Nadu",
+  "documents": {
+    "kml_file": "suganya.kml",
+    "deed_file": "Suganya_deed.pdf",
+    "parent_document_file": "Suganya_parent_document.pdf",
+    "fmb_file": "Suganya_FMB_sketch.pdf",
+    "patta_file": "Suganya_patta_chitta.pdf",
+    "ec_details_file": "Suganya_EC_document.pdf",
+    "building_plan_file": "Suganya_building_Drawing.pdf",
+    "plan_approval_letter_file": "Suganya_Plan_approval.pdf",
+    "building_permit_letter_file": "Suganya_buildingpermit.pdf",
+    "aerial_photo_file": "Suganya_Aerial_Photo.pdf"
+  }
+}
