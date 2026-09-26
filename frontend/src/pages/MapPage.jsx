@@ -1081,14 +1081,15 @@ export default function MapPage() {
         }
       })
       
-      const startMarker = L.marker([startLat, startLng], { title: 'Start' })
-      const endMarker = L.marker([endLat, endLng], { title: 'End' })
+      const addressMarker = L.marker([addrLat, addrLng], { title: inputAddress }).bindPopup(
+        `<div style="font-family: inherit; font-size: 13px; font-weight: 600;">${inputAddress}</div>`
+      )
       
-      const featureGroup = L.featureGroup([geojsonLayer, startMarker, endMarker])
+      const featureGroup = L.featureGroup([geojsonLayer, addressMarker])
       featureGroup.addTo(mapInstanceRef.current)
       routeLayerRef.current = featureGroup
       
-      mapInstanceRef.current.fitBounds(featureGroup.getBounds(), { padding: [50, 50] })
+      mapInstanceRef.current.fitBounds(featureGroup.getBounds().extend([pLat, pLng]), { padding: [50, 50] })
       
     } catch (err) {
       console.error(err)
@@ -1146,8 +1147,8 @@ export default function MapPage() {
         group.addTo(mapInstanceRef.current)
         nearbyLayerRef.current = group
         
-        group.addLayer(L.marker([selectedPlot.lat, selectedPlot.lon]))
-        mapInstanceRef.current.fitBounds(group.getBounds(), { padding: [50, 50] })
+        const bounds = group.getBounds().extend([selectedPlot.lat, selectedPlot.lon])
+        mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] })
       }
       
     } catch (err) {
