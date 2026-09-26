@@ -1,5 +1,5 @@
-from pydantic_settings import BaseSettings
-import os
+from typing import Optional
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+psycopg2://lpms_user:lpms_password@db:5432/lpms"
@@ -21,10 +21,12 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
 
     # Mapbox
-    MAPBOX_ACCESS_TOKEN: str = os.getenv("MAPBOX_ACCESS_TOKEN")
+    MAPBOX_ACCESS_TOKEN: Optional[str] = ""
 
-    class Config:
-        env_file = ".env"
+    model_config = SettingsConfigDict(
+        env_file=(".env", "../.env"),
+        extra="ignore"
+    )
 
 
 settings = Settings()
