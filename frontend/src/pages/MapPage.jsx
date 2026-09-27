@@ -243,11 +243,13 @@ export default function MapPage() {
     const layers = []
     
     pts.forEach(pt => {
-      layers.push(L.circleMarker(pt, { radius: 5, color: '#d97706', fillColor: '#fcd34d', fillOpacity: 1, weight: 2 }))
+      if (!freehandMeasureModeRef.current) {
+        layers.push(L.circleMarker(pt, { radius: 5, color: '#d97706', fillColor: '#fcd34d', fillOpacity: 1, weight: 2 }))
+      }
     })
     
     if (pts.length === 2) {
-      layers.push(L.polyline(pts, { color: '#d97706', weight: 4, dashArray: '5 5' }))
+      layers.push(L.polyline(pts, { color: '#d97706', weight: 4, dashArray: freehandMeasureModeRef.current ? '' : '5 5' }))
     } else if (pts.length > 2) {
       const polygon = L.polygon(pts, { color: '#d97706', weight: 3, fillColor: '#f59e0b', fillOpacity: 0.35 })
       
@@ -495,7 +497,7 @@ export default function MapPage() {
         if (lastPt) {
           const p1 = map.latLngToContainerPoint(lastPt)
           const p2 = map.latLngToContainerPoint(e.latlng)
-          if ((p1.x - p2.x)**2 + (p1.y - p2.y)**2 > 100) {
+          if ((p1.x - p2.x)**2 + (p1.y - p2.y)**2 > 16) {
             pts.push(e.latlng)
             updateGlobalMeasurePolygon(map)
           }
@@ -509,6 +511,14 @@ export default function MapPage() {
       }
     }
     window.addEventListener('mouseup', handleGlobalMouseUp)
+
+    const handleDragStart = (e) => {
+      if (globalMeasureModeRef.current && freehandMeasureModeRef.current) {
+        e.preventDefault()
+      }
+    }
+    const mapContainer = map.getContainer()
+    mapContainer.addEventListener('dragstart', handleDragStart)
 
     map.on('click', (e) => {
       if (globalMeasureModeRef.current) {
@@ -586,6 +596,7 @@ export default function MapPage() {
     // Cleanup on unmount
     return () => {
       window.removeEventListener('mouseup', handleGlobalMouseUp)
+      mapContainer.removeEventListener('dragstart', handleDragStart)
       if (flyToSafetyTimerRef.current) {
         clearTimeout(flyToSafetyTimerRef.current)
         flyToSafetyTimerRef.current = null
