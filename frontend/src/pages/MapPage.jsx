@@ -153,7 +153,11 @@ export default function MapPage() {
   const measureModeRef = useRef(isMeasureMode)
   
   const [isGlobalMeasure, setIsGlobalMeasure] = useState(false)
+  const [isFreehandMeasure, setIsFreehandMeasure] = useState(false)
+  
   const globalMeasureModeRef = useRef(isGlobalMeasure)
+  const freehandMeasureModeRef = useRef(isFreehandMeasure)
+  const isDrawingFreehandRef = useRef(false)
   const globalMeasurePointsRef = useRef([])
   const globalMeasureLayerRef = useRef(null)
   
@@ -163,7 +167,17 @@ export default function MapPage() {
 
   useEffect(() => {
     globalMeasureModeRef.current = isGlobalMeasure
-  }, [isGlobalMeasure])
+    freehandMeasureModeRef.current = isFreehandMeasure
+    
+    // Toggle map dragging for freehand
+    if (mapInstanceRef.current) {
+      if (isGlobalMeasure && isFreehandMeasure) {
+        mapInstanceRef.current.dragging.disable()
+      } else {
+        mapInstanceRef.current.dragging.enable()
+      }
+    }
+  }, [isGlobalMeasure, isFreehandMeasure])
 
   const [countries, setCountries] = useState([])
   const [states, setStates] = useState([])
@@ -229,13 +243,13 @@ export default function MapPage() {
     const layers = []
     
     pts.forEach(pt => {
-      layers.push(L.circleMarker(pt, { radius: 4, color: '#f59e0b', fillColor: '#fff', fillOpacity: 1, weight: 2 }))
+      layers.push(L.circleMarker(pt, { radius: 5, color: '#d97706', fillColor: '#fcd34d', fillOpacity: 1, weight: 2 }))
     })
     
     if (pts.length === 2) {
-      layers.push(L.polyline(pts, { color: '#f59e0b', weight: 3, dashArray: '4 4' }))
+      layers.push(L.polyline(pts, { color: '#d97706', weight: 4, dashArray: '5 5' }))
     } else if (pts.length > 2) {
-      const polygon = L.polygon(pts, { color: '#f59e0b', weight: 3, fillColor: '#f59e0b', fillOpacity: 0.2 })
+      const polygon = L.polygon(pts, { color: '#d97706', weight: 3, fillColor: '#f59e0b', fillOpacity: 0.35 })
       
       const areaSqm = calculateArea(pts)
       let areaStr = ''
@@ -463,8 +477,38 @@ export default function MapPage() {
       setActiveBasemap(e.name)
     })
 
+    map.on('mousedown', (e) => {
+      if (globalMeasureModeRef.current && freehandMeasureModeRef.current) {
+        isDrawingFreehandRef.current = true
+        globalMeasurePointsRef.current.push(e.latlng)
+        updateGlobalMeasurePolygon(map)
+      }
+    })
+
+    map.on('mousemove', (e) => {
+      if (globalMeasureModeRef.current && freehandMeasureModeRef.current && isDrawingFreehandRef.current) {
+        const pts = globalMeasurePointsRef.current
+        const lastPt = pts[pts.length - 1]
+        if (lastPt) {
+          const p1 = map.latLngToContainerPoint(lastPt)
+          const p2 = map.latLngToContainerPoint(e.latlng)
+          if ((p1.x - p2.x)**2 + (p1.y - p2.y)**2 > 100) {
+            pts.push(e.latlng)
+            updateGlobalMeasurePolygon(map)
+          }
+        }
+      }
+    })
+
+    map.on('mouseup', () => {
+      if (isDrawingFreehandRef.current) {
+        isDrawingFreehandRef.current = false
+      }
+    })
+
     map.on('click', (e) => {
       if (globalMeasureModeRef.current) {
+        if (freehandMeasureModeRef.current) return // Click is handled by mousedown/up in freehand
         globalMeasurePointsRef.current.push(e.latlng)
         updateGlobalMeasurePolygon(map)
         return
@@ -1418,9 +1462,25 @@ export default function MapPage() {
               {isGlobalMeasure ? 'Cancel Measuring' : 'Draw Area'}
             </button>
             {isGlobalMeasure && (
-              <div style={{ background: '#fff', padding: '0.5rem 0.75rem', borderRadius: '8px', fontSize: '0.8rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
-                <strong>Click</strong> on map to draw points.<br/>
-                <strong>Right-click</strong> to undo.
+              <div style={{ background: '#fff', padding: '0.75rem', borderRadius: '8px', fontSize: '0.85rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', border: '1px solid var(--color-border)', color: 'var(--color-text)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div>
+                  <strong>Click</strong> on map to draw points.<br/>
+                  <strong>Right-click</strong> to undo.
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', borderTop: '1px solid #f1f5f9', paddingTop: '0.5rem' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={isFreehandMeasure}
+                    onChange={(e) => setIsFreehandMeasure(e.target.checked)}
+                    style={{ accentColor: '#f59e0b', width: '16px', height: '16px' }}
+                  />
+                  <span style={{ fontWeight: '500' }}>Freehand Draw Mode</span>
+                </label>
+                {isFreehandMeasure && (
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '-0.2rem' }}>
+                    Click and drag mouse to draw continuously.
+                  </div>
+                )}
               </div>
             )}
           </div>
