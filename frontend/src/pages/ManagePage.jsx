@@ -30,15 +30,16 @@ function convertArea(val, fromUnit, toUnit) {
   return Number.isInteger(converted) ? converted.toString() : parseFloat(converted.toFixed(4)).toString()
 }
 
-function FileField({ label, name, accept, onChange, fileName }) {
+function FileField({ label, name, accept, onChange, files }) {
+  const numFiles = files && files.length ? files.length : 0
   return (
     <div className="form-group">
       <label className="form-label">{label}</label>
       <label className="file-input-wrapper">
-        <input type="file" accept={accept} onChange={e => onChange(e.target.files[0])} />
+        <input type="file" accept={accept} multiple onChange={e => onChange(Array.from(e.target.files))} />
         <span className="file-label">
-          {fileName
-            ? <span className="file-name" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}><Check size={14} /> {fileName}</span>
+          {numFiles > 0
+            ? <span className="file-name" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}><Check size={14} /> {numFiles} file{numFiles > 1 ? 's' : ''} selected</span>
             : <span>Click to upload {label.toLowerCase()}</span>}
         </span>
       </label>
@@ -195,17 +196,17 @@ export default function ManagePage() {
       if (spatialData.unit) fd.append('area_unit', spatialData.unit)
 
       fd.append('kml_file', kmlFile)
-      if (fmbFile) fd.append('fmb_file', fmbFile)
-      if (pattaFile) fd.append('patta_file', pattaFile)
-      if (deedFile) fd.append('deed_file', deedFile)
-      if (parentDocumentFile) fd.append('parent_document_file', parentDocumentFile)
-      if (ecDetailsFile) fd.append('ec_details_file', ecDetailsFile)
-      if (buildingPlanFile) fd.append('building_plan_file', buildingPlanFile)
-      if (planApprovalLetterFile) fd.append('plan_approval_letter_file', planApprovalLetterFile)
-      if (buildingPermitLetterFile) fd.append('building_permit_letter_file', buildingPermitLetterFile)
-      if (propertyTaxFile) fd.append('property_tax_file', propertyTaxFile)
-      if (aerialPhotoFile) fd.append('aerial_photo_file', aerialPhotoFile)
-      if (disputeDetailsFile) fd.append('dispute_details_file', disputeDetailsFile)
+      if (fmbFile) fmbFile.forEach(f => fd.append('fmb_file', f))
+      if (pattaFile) pattaFile.forEach(f => fd.append('patta_file', f))
+      if (deedFile) deedFile.forEach(f => fd.append('deed_file', f))
+      if (parentDocumentFile) parentDocumentFile.forEach(f => fd.append('parent_document_file', f))
+      if (ecDetailsFile) ecDetailsFile.forEach(f => fd.append('ec_details_file', f))
+      if (buildingPlanFile) buildingPlanFile.forEach(f => fd.append('building_plan_file', f))
+      if (planApprovalLetterFile) planApprovalLetterFile.forEach(f => fd.append('plan_approval_letter_file', f))
+      if (buildingPermitLetterFile) buildingPermitLetterFile.forEach(f => fd.append('building_permit_letter_file', f))
+      if (propertyTaxFile) propertyTaxFile.forEach(f => fd.append('property_tax_file', f))
+      if (aerialPhotoFile) aerialPhotoFile.forEach(f => fd.append('aerial_photo_file', f))
+      if (disputeDetailsFile) disputeDetailsFile.forEach(f => fd.append('dispute_details_file', f))
 
       await createPlot(fd)
       resetForm()
@@ -587,11 +588,11 @@ export default function ManagePage() {
                           <div>
                             <h4 className="doc-section-title">Land Documents</h4>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                              <FileField label="Deed Document" accept=".pdf" onChange={setDeedFile} fileName={deedFile?.name} />
-                              <FileField label="Parent Document" accept=".pdf" onChange={setParentDocumentFile} fileName={parentDocumentFile?.name} />
-                              <FileField label="FMB Sketch" accept=".pdf" onChange={setFmbFile} fileName={fmbFile?.name} />
-                              <FileField label="Patta / Chitta Details" accept=".pdf" onChange={setPattaFile} fileName={pattaFile?.name} />
-                              <FileField label="EC Details" accept=".pdf" onChange={setEcDetailsFile} fileName={ecDetailsFile?.name} />
+                              <FileField label="Deed Document" accept=".pdf" onChange={setDeedFile} files={deedFile} />
+                              <FileField label="Parent Document" accept=".pdf" onChange={setParentDocumentFile} files={parentDocumentFile} />
+                              <FileField label="FMB Sketch" accept=".pdf" onChange={setFmbFile} files={fmbFile} />
+                              <FileField label="Patta / Chitta Details" accept=".pdf" onChange={setPattaFile} files={pattaFile} />
+                              <FileField label="EC Details" accept=".pdf" onChange={setEcDetailsFile} files={ecDetailsFile} />
                             </div>
                           </div>
                         )}
@@ -600,9 +601,9 @@ export default function ManagePage() {
                           <div>
                             <h4 className="doc-section-title">Build-up Details</h4>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                              <FileField label="Building Plan" accept=".pdf" onChange={setBuildingPlanFile} fileName={buildingPlanFile?.name} />
-                              <FileField label="Plan Approval Letter" accept=".pdf" onChange={setPlanApprovalLetterFile} fileName={planApprovalLetterFile?.name} />
-                              <FileField label="Building Permit Letter" accept=".pdf" onChange={setBuildingPermitLetterFile} fileName={buildingPermitLetterFile?.name} />
+                              <FileField label="Building Plan" accept=".pdf" onChange={setBuildingPlanFile} files={buildingPlanFile} />
+                              <FileField label="Plan Approval Letter" accept=".pdf" onChange={setPlanApprovalLetterFile} files={planApprovalLetterFile} />
+                              <FileField label="Building Permit Letter" accept=".pdf" onChange={setBuildingPermitLetterFile} files={buildingPermitLetterFile} />
                             </div>
                           </div>
                         )}
@@ -611,9 +612,9 @@ export default function ManagePage() {
                           <div>
                             <h4 className="doc-section-title">Others</h4>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                              <FileField label="Property Tax" accept=".pdf" onChange={setPropertyTaxFile} fileName={propertyTaxFile?.name} />
-                              <FileField label="Aerial/Field Photos" accept=".pdf" onChange={setAerialPhotoFile} fileName={aerialPhotoFile?.name} />
-                              <FileField label="Dispute Details" accept=".pdf" onChange={setDisputeDetailsFile} fileName={disputeDetailsFile?.name} />
+                              <FileField label="Property Tax" accept=".pdf" onChange={setPropertyTaxFile} files={propertyTaxFile} />
+                              <FileField label="Aerial/Field Photos" accept=".pdf" onChange={setAerialPhotoFile} files={aerialPhotoFile} />
+                              <FileField label="Dispute Details" accept=".pdf" onChange={setDisputeDetailsFile} files={disputeDetailsFile} />
                             </div>
                           </div>
                         )}
