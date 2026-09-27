@@ -479,6 +479,9 @@ export default function MapPage() {
 
     map.on('mousedown', (e) => {
       if (globalMeasureModeRef.current && freehandMeasureModeRef.current) {
+        if (e.originalEvent && e.originalEvent.preventDefault) {
+          e.originalEvent.preventDefault() // Prevents browser image dragging
+        }
         isDrawingFreehandRef.current = true
         globalMeasurePointsRef.current.push(e.latlng)
         updateGlobalMeasurePolygon(map)
@@ -500,11 +503,12 @@ export default function MapPage() {
       }
     })
 
-    map.on('mouseup', () => {
+    const handleGlobalMouseUp = () => {
       if (isDrawingFreehandRef.current) {
         isDrawingFreehandRef.current = false
       }
-    })
+    }
+    window.addEventListener('mouseup', handleGlobalMouseUp)
 
     map.on('click', (e) => {
       if (globalMeasureModeRef.current) {
@@ -581,6 +585,7 @@ export default function MapPage() {
 
     // Cleanup on unmount
     return () => {
+      window.removeEventListener('mouseup', handleGlobalMouseUp)
       if (flyToSafetyTimerRef.current) {
         clearTimeout(flyToSafetyTimerRef.current)
         flyToSafetyTimerRef.current = null
