@@ -19,7 +19,7 @@ import { getDocumentUrl } from '../api/documents'
 import { getNodeByName, getCountries, getChildren, getNode } from '../api/geo'
 import { geocodeAddress, getRoute, getNearbyPlaces } from '../api/routing'
 import Header from '../components/Header'
-import { Search, ChevronDown, ChevronUp, X, FileText, Download, Eye, ChevronRight, MapPin, Navigation, ArrowLeftRight, Map as MapIcon, Clock, Car, Bike, Footprints, Pin, PinOff } from 'lucide-react'
+import { Search, ChevronDown, ChevronUp, X, FileText, Download, Eye, ChevronRight, MapPin, Navigation, ArrowLeftRight, Map as MapIcon, Clock, Car, Bike, Footprints, Pin, PinOff, Folder, Ruler } from 'lucide-react'
 
 // Unit conversion constants
 const AREA_UNITS = ['sqm', 'sqft', 'acres', 'hectares']
@@ -130,6 +130,13 @@ export default function MapPage() {
   const [selectedState, setSelectedState] = useState('Tamil Nadu')
   const [selectedDistrict, setSelectedDistrict] = useState('Coimbatore')
   const [activeDistrictId, setActiveDistrictId] = useState(districtId || null)
+  
+  const [isMeasureMode, setIsMeasureMode] = useState(false)
+  const measureModeRef = useRef(isMeasureMode)
+  
+  useEffect(() => {
+    measureModeRef.current = isMeasureMode
+  }, [isMeasureMode])
 
   const [countries, setCountries] = useState([])
   const [states, setStates] = useState([])
@@ -155,11 +162,25 @@ export default function MapPage() {
   const [travelMode, setTravelMode] = useState('driving')
   const [routeError, setRouteError] = useState('')
   const routeLayerRef = useRef(null)
+  const distanceLineRef = useRef(null)
+  const distanceMarkerRef = useRef(null)
 
   const [geocodeResults, setGeocodeResults] = useState([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [isGeocoding, setIsGeocoding] = useState(false)
   const [selectedDestCoords, setSelectedDestCoords] = useState(null)
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (selectedLayerRef.current) {
+          handleClosePanel()
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   const [nearbyCategory, setNearbyCategory] = useState('')
   const [nearbyPlaces, setNearbyPlaces] = useState([])
@@ -177,6 +198,14 @@ export default function MapPage() {
     if (nearbyLayerRef.current) {
       mapInstanceRef.current?.removeLayer(nearbyLayerRef.current)
       nearbyLayerRef.current = null
+    }
+    if (distanceLineRef.current) {
+      mapInstanceRef.current?.removeLayer(distanceLineRef.current)
+      distanceLineRef.current = null
+    }
+    if (distanceMarkerRef.current) {
+      mapInstanceRef.current?.removeLayer(distanceMarkerRef.current)
+      distanceMarkerRef.current = null
     }
     setRouteData(null)
     setNearbyPlaces([])
@@ -370,7 +399,45 @@ export default function MapPage() {
       setActiveBasemap(e.name)
     })
 
-    map.on('click', () => {
+    map.on('click', (e) => {
+      const sp = selectedPlotRef.current
+      if (sp && sp.lat != null && sp.lon != null) {
+        if (measureModeRef.current) {
+          // Measure exact distance from clicked point to the plot
+          const clickedLatLng = e.latlng
+          const plotLatLng = L.latLng(sp.lat, sp.lon)
+          const distance = clickedLatLng.distanceTo(plotLatLng)
+          
+          const distanceStr = distance > 1000 ? (distance / 1000).toFixed(2) + ' km' : Math.round(distance) + ' m'
+          
+          if (distanceLineRef.current) map.removeLayer(distanceLineRef.current)
+          if (distanceMarkerRef.current) map.removeLayer(distanceMarkerRef.current)
+          
+          distanceLineRef.current = L.polyline([clickedLatLng, plotLatLng], { color: '#0ea5e9', dashArray: '5, 10', weight: 3 }).addTo(map)
+          distanceMarkerRef.current = L.marker(clickedLatLng, { 
+            icon: L.divIcon({
+              className: 'custom-div-icon',
+              html: `<div style="background: white; border: 2px solid #0ea5e9; border-radius: 50%; width: 12px; height: 12px;"></div>`,
+              iconSize: [12, 12],
+              iconAnchor: [6, 6]
+            })
+          }).addTo(map)
+          .bindPopup(`<div style="font-weight: 600; font-family: inherit; font-size: 13px;">Distance to Plot:<br/><span style="color: #0ea5e9; font-size: 15px;">${distanceStr}</span></div>`, { closeOnClick: false, autoClose: false })
+          .openPopup()
+        } else {
+          // Measure mode off -> clicking map deselects the plot
+          if (selectedLayerRef.current) {
+            handleClosePanel()
+          }
+        }
+      } else {
+        if (selectedLayerRef.current) {
+          handleClosePanel()
+        }
+      }
+    })
+
+    map.on('contextmenu', (e) => {
       if (selectedLayerRef.current) {
         handleClosePanel()
       }
@@ -1311,6 +1378,34 @@ export default function MapPage() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => {
+                    setIsMeasureMode(!isMeasureMode)
+                    if (isMeasureMode) {
+                      // Turning off, clear existing tools
+                      if (distanceLineRef.current) mapInstanceRef.current?.removeLayer(distanceLineRef.current)
+                      if (distanceMarkerRef.current) mapInstanceRef.current?.removeLayer(distanceMarkerRef.current)
+                    }
+                  }}
+                  title={isMeasureMode ? "Turn off measure tool" : "Measure distance to plot"}
+                  style={{
+                    background: isMeasureMode ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.18)',
+                    border: 'none',
+                    color: isMeasureMode ? '#1d4ed8' : '#fff',
+                    borderRadius: '50%',
+                    width: '32px',
+                    height: '32px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.15s ease'
+                  }}
+                  aria-label="Measure mode"
+                >
+                  <Ruler size={16} />
+                </button>
+                <button
+                  type="button"
                   onClick={handleClosePanel}
                   style={{
                     background: 'rgba(255,255,255,0.18)',
@@ -1487,43 +1582,55 @@ export default function MapPage() {
                     )
                   }
 
+                  const docsByType = {}
+                  plotDocs.forEach(doc => {
+                    if (!docsByType[doc.doc_type]) docsByType[doc.doc_type] = []
+                    docsByType[doc.doc_type].push(doc)
+                  })
+
                   return (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      {plotDocs.map(doc => (
-                        <div key={doc.id} style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '0.55rem 0.75rem',
-                          background: '#f8fafc',
-                          borderRadius: '8px',
-                          border: '1px solid var(--color-border)',
-                        }}>
-                          <span style={{ fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.45rem', color: '#0f172a' }}>
-                            <FileText size={15} style={{ color: 'var(--color-primary)' }} />
-                            <span style={{ textTransform: 'capitalize' }}>{doc.doc_type.replace(/_/g, ' ')}</span>
-                          </span>
-                          <div style={{ display: 'flex', gap: '0.35rem' }}>
-                            <button
-                              className="btn btn-outline btn-sm"
-                              onClick={() => handlePreviewPdf(doc)}
-                              disabled={pdfLoading}
-                              title="Preview Document"
-                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px' }}
-                            >
-                              <Eye size={13} />
-                            </button>
-                            <button
-                              className="btn btn-primary btn-sm"
-                              onClick={() => handleDownloadPdf(doc)}
-                              title="Download Document"
-                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px' }}
-                            >
-                              <Download size={13} />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+                      {Object.entries(docsByType).map(([docType, docs]) => {
+                        const title = docType.replace(/_/g, ' ')
+                        if (docs.length === 1) {
+                          const doc = docs[0]
+                          return (
+                            <div key={doc.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.75rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+                              <span style={{ fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.45rem', color: '#0f172a' }}>
+                                <FileText size={15} style={{ color: 'var(--color-primary)' }} />
+                                <span style={{ textTransform: 'capitalize' }}>{title}</span>
+                              </span>
+                              <div style={{ display: 'flex', gap: '0.35rem' }}>
+                                <button className="btn btn-outline btn-sm" onClick={() => handlePreviewPdf(doc)} disabled={pdfLoading} title="Preview Document" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px' }}><Eye size={13} /></button>
+                                <button className="btn btn-primary btn-sm" onClick={() => handleDownloadPdf(doc)} title="Download Document" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px' }}><Download size={13} /></button>
+                              </div>
+                            </div>
+                          )
+                        } else {
+                          return (
+                            <div key={docType} style={{ padding: '0.55rem 0.75rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+                              <div style={{ fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.45rem', color: '#0f172a', marginBottom: '0.5rem' }}>
+                                <Folder size={15} style={{ color: 'var(--color-primary)' }} />
+                                <span style={{ textTransform: 'capitalize' }}>{title} ({docs.length})</span>
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', paddingLeft: '1.25rem', borderLeft: '1px dashed var(--color-border)', marginLeft: '0.4rem' }}>
+                                {docs.map((doc, idx) => (
+                                  <div key={doc.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.25rem 0' }}>
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                      <FileText size={13} color="var(--color-text-muted)" />
+                                      {title} #{idx + 1}
+                                    </span>
+                                    <div style={{ display: 'flex', gap: '0.25rem' }}>
+                                      <button className="btn btn-outline btn-sm" onClick={() => handlePreviewPdf(doc)} disabled={pdfLoading} title="Preview Document" style={{ padding: '0.15rem 0.35rem', fontSize: '0.7rem', borderRadius: '4px' }}><Eye size={12} /></button>
+                                      <button className="btn btn-primary btn-sm" onClick={() => handleDownloadPdf(doc)} title="Download Document" style={{ padding: '0.15rem 0.35rem', fontSize: '0.7rem', borderRadius: '4px' }}><Download size={12} /></button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        }
+                      })}
                     </div>
                   )
                 })()}
@@ -1664,7 +1771,7 @@ export default function MapPage() {
                           <span>{Math.round(routeData.duration / 60)} min</span>
                         </div>
                         <div style={{ color: '#1e40af', fontWeight: '600', fontSize: '0.85rem' }}>
-                          {(routeData.distance / 1000).toFixed(1)} km
+                          {routeData.distance > 1000 ? (routeData.distance / 1000).toFixed(1) + ' km' : Math.round(routeData.distance) + ' m'}
                         </div>
                       </div>
                       
