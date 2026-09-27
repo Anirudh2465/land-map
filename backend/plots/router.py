@@ -160,17 +160,17 @@ async def create_plot(
     area_value: Optional[float] = Form(None),
     area_unit: Optional[str] = Form(None),
     kml_file: UploadFile = File(...),
-    fmb_file: Optional[UploadFile] = File(None),
-    patta_file: Optional[UploadFile] = File(None),
-    deed_file: Optional[UploadFile] = File(None),
-    parent_document_file: Optional[UploadFile] = File(None),
-    ec_details_file: Optional[UploadFile] = File(None),
-    building_plan_file: Optional[UploadFile] = File(None),
-    plan_approval_letter_file: Optional[UploadFile] = File(None),
-    building_permit_letter_file: Optional[UploadFile] = File(None),
-    property_tax_file: Optional[UploadFile] = File(None),
-    aerial_photo_file: Optional[UploadFile] = File(None),
-    dispute_details_file: Optional[UploadFile] = File(None),
+    fmb_file: List[UploadFile] = File(default=[]),
+    patta_file: List[UploadFile] = File(default=[]),
+    deed_file: List[UploadFile] = File(default=[]),
+    parent_document_file: List[UploadFile] = File(default=[]),
+    ec_details_file: List[UploadFile] = File(default=[]),
+    building_plan_file: List[UploadFile] = File(default=[]),
+    plan_approval_letter_file: List[UploadFile] = File(default=[]),
+    building_permit_letter_file: List[UploadFile] = File(default=[]),
+    property_tax_file: List[UploadFile] = File(default=[]),
+    aerial_photo_file: List[UploadFile] = File(default=[]),
+    dispute_details_file: List[UploadFile] = File(default=[]),
     db: Session = Depends(get_db),
     current_user=Depends(require_admin),
 ):
@@ -259,7 +259,7 @@ async def create_plot(
     db.flush()  # get plot.id
 
     # ── Upload PDFs ───────────────────────────────────────────────────────
-    pdf_files = [
+    pdf_files_groups = [
         ("FMB", fmb_file),
         ("PATTA", patta_file),
         ("DEED", deed_file),
@@ -272,20 +272,21 @@ async def create_plot(
         ("AERIAL_PHOTO", aerial_photo_file),
         ("DISPUTE_DETAILS", dispute_details_file),
     ]
-    for doc_type, upload in pdf_files:
-        if upload and upload.filename:
-            pdf_bytes = await upload.read()
-            if pdf_bytes:
-                key = f"documents/{plot_id}/{doc_type}.pdf"
-                upload_file(key, pdf_bytes, content_type="application/pdf")
-                doc = Document(
-                    id=uuid.uuid4(),
-                    plot_id=plot_id,
-                    doc_type=doc_type,
-                    storage_key=key,
-                    uploaded_by=current_user.id,
-                )
-                db.add(doc)
+    for doc_type, upload_list in pdf_files_groups:
+        for idx, upload in enumerate(upload_list):
+            if upload and upload.filename:
+                pdf_bytes = await upload.read()
+                if pdf_bytes:
+                    key = f"documents/{plot_id}/{doc_type}_{idx}_{upload.filename}"
+                    upload_file(key, pdf_bytes, content_type="application/pdf")
+                    doc = Document(
+                        id=uuid.uuid4(),
+                        plot_id=plot_id,
+                        doc_type=doc_type,
+                        storage_key=key,
+                        uploaded_by=current_user.id,
+                    )
+                    db.add(doc)
 
     db.commit()
     db.refresh(plot)
