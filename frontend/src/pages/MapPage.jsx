@@ -49,6 +49,24 @@ const INDIA_VIEW = { center: [22.5, 79.5], zoom: 5.5 }
 const TN_VIEW = { center: [11.12, 78.65], zoom: 7.8 }
 
 // Coimbatore district approximate bounds [SW, NE]
+// Area calculation for polygon based on earth radius
+function calculateArea(latLngs) {
+  let area = 0
+  const d2r = Math.PI / 180
+  const earthRadius = 6378137 // meters
+  
+  if (latLngs.length > 2) {
+    for (let i = 0; i < latLngs.length; i++) {
+      let p1 = latLngs[i]
+      let p2 = latLngs[(i + 1) % latLngs.length]
+      
+      area += (p2.lng - p1.lng) * d2r * (2 + Math.sin(p1.lat * d2r) + Math.sin(p2.lat * d2r))
+    }
+    area = area * earthRadius * earthRadius / 2.0
+  }
+  return Math.abs(area)
+}
+
 const CBE_BOUNDS = L.latLngBounds(
   L.latLng(10.85, 76.85),
   L.latLng(11.25, 77.25)
@@ -134,9 +152,18 @@ export default function MapPage() {
   const [isMeasureMode, setIsMeasureMode] = useState(false)
   const measureModeRef = useRef(isMeasureMode)
   
+  const [isGlobalMeasure, setIsGlobalMeasure] = useState(false)
+  const globalMeasureModeRef = useRef(isGlobalMeasure)
+  const globalMeasurePointsRef = useRef([])
+  const globalMeasureLayerRef = useRef(null)
+  
   useEffect(() => {
     measureModeRef.current = isMeasureMode
   }, [isMeasureMode])
+
+  useEffect(() => {
+    globalMeasureModeRef.current = isGlobalMeasure
+  }, [isGlobalMeasure])
 
   const [countries, setCountries] = useState([])
   const [states, setStates] = useState([])
@@ -189,6 +216,43 @@ export default function MapPage() {
   const [expandedNearbyPlaceId, setExpandedNearbyPlaceId] = useState(null)
   const [nearbyRadius, setNearbyRadius] = useState(2000)
   const nearbyLayerRef = useRef(null)
+
+  const updateGlobalMeasurePolygon = (map) => {
+    const pts = globalMeasurePointsRef.current
+    if (globalMeasureLayerRef.current) {
+      map.removeLayer(globalMeasureLayerRef.current)
+      globalMeasureLayerRef.current = null
+    }
+    
+    if (pts.length === 0) return
+    
+    const layers = []
+    
+    pts.forEach(pt => {
+      layers.push(L.circleMarker(pt, { radius: 4, color: '#f59e0b', fillColor: '#fff', fillOpacity: 1, weight: 2 }))
+    })
+    
+    if (pts.length === 2) {
+      layers.push(L.polyline(pts, { color: '#f59e0b', weight: 3, dashArray: '4 4' }))
+    } else if (pts.length > 2) {
+      const polygon = L.polygon(pts, { color: '#f59e0b', weight: 3, fillColor: '#f59e0b', fillOpacity: 0.2 })
+      
+      const areaSqm = calculateArea(pts)
+      let areaStr = ''
+      if (areaSqm > 10000) {
+        areaStr = (areaSqm / 10000).toFixed(2) + ' hectares'
+      } else {
+        areaStr = Math.round(areaSqm) + ' sq meters'
+      }
+      
+      polygon.bindTooltip(`Area: ${areaStr}`, { permanent: true, direction: 'center', className: 'area-tooltip' })
+      layers.push(polygon)
+    }
+    
+    const group = L.featureGroup(layers)
+    group.addTo(map)
+    globalMeasureLayerRef.current = group
+  }
 
   const clearRouteAndNearby = () => {
     if (routeLayerRef.current) {
@@ -400,6 +464,11 @@ export default function MapPage() {
     })
 
     map.on('click', (e) => {
+      if (globalMeasureModeRef.current) {
+        globalMeasurePointsRef.current.push(e.latlng)
+        updateGlobalMeasurePolygon(map)
+        return
+      }
       const sp = selectedPlotRef.current
       if (sp && sp.lat != null && sp.lon != null) {
         if (measureModeRef.current) {
@@ -438,6 +507,15 @@ export default function MapPage() {
     })
 
     map.on('contextmenu', (e) => {
+      if (globalMeasureModeRef.current) {
+        if (globalMeasurePointsRef.current.length > 0) {
+          globalMeasurePointsRef.current.pop()
+          updateGlobalMeasurePolygon(map)
+        } else {
+          setIsGlobalMeasure(false)
+        }
+        return
+      }
       if (selectedLayerRef.current) {
         handleClosePanel()
       }
@@ -1309,6 +1387,45 @@ export default function MapPage() {
           </div>
         )}
 
+        {/* Global Area Measure Tool */}
+        {currentStep === 'READY' && (
+          <div style={{ position: 'absolute', bottom: 30, left: 30, zIndex: 1000, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <button
+              onClick={() => {
+                 const newVal = !isGlobalMeasure
+                 setIsGlobalMeasure(newVal)
+                 if (!newVal) {
+                   globalMeasurePointsRef.current = []
+                   updateGlobalMeasurePolygon(mapInstanceRef.current)
+                 }
+              }}
+              className="btn"
+              style={{
+                background: isGlobalMeasure ? '#f59e0b' : '#fff',
+                color: isGlobalMeasure ? '#fff' : '#333',
+                border: '1px solid #f59e0b',
+                boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.6rem 1rem',
+                borderRadius: '8px',
+                fontWeight: '600',
+                cursor: 'pointer'
+              }}
+            >
+              <Ruler size={18} />
+              {isGlobalMeasure ? 'Cancel Measuring' : 'Draw Area'}
+            </button>
+            {isGlobalMeasure && (
+              <div style={{ background: '#fff', padding: '0.5rem 0.75rem', borderRadius: '8px', fontSize: '0.8rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
+                <strong>Click</strong> on map to draw points.<br/>
+                <strong>Right-click</strong> to undo.
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Left Side Info Panel rendered directly (Pinned directly above plot, or Floating when Unpinned) */}
         {selectedPlot && (
           <div 
@@ -2095,6 +2212,13 @@ export default function MapPage() {
           margin-top: 2px;
           white-space: nowrap;
           display: none;
+        }
+        .area-tooltip {
+          background: rgba(0,0,0,0.7);
+          border: none;
+          color: #fff;
+          font-weight: bold;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
       `}</style>
     </div>
