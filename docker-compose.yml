@@ -26,7 +26,7 @@ services:
     restart: unless-stopped
 
   minio:
-    image: cgr.dev/chainguard/minio:latest
+    image: quay.io/minio/minio:latest
     container_name: lpms_minio
     command: server /data --console-address ":9001"
     environment:
