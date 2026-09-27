@@ -154,12 +154,20 @@ export default function MapPage() {
   
   const [isGlobalMeasure, setIsGlobalMeasure] = useState(false)
   const [isFreehandMeasure, setIsFreehandMeasure] = useState(false)
+  const [globalAreaUnit, setGlobalAreaUnit] = useState('sqm')
+  
+  const POLYGON_COLORS = ['#f59e0b', '#10b981', '#3b82f6', '#ec4899', '#8b5cf6', '#ef4444', '#14b8a6']
   
   const globalMeasureModeRef = useRef(isGlobalMeasure)
   const freehandMeasureModeRef = useRef(isFreehandMeasure)
+  const globalAreaUnitRef = useRef(globalAreaUnit)
   const isDrawingFreehandRef = useRef(false)
+  
+  const globalPolygonsRef = useRef([]) // Store finalized polygons { points, color }
   const globalMeasurePointsRef = useRef([])
   const globalMeasureLayerRef = useRef(null)
+  
+  const [measureRenderTrigger, setMeasureRenderTrigger] = useState(0)
   
   useEffect(() => {
     measureModeRef.current = isMeasureMode
@@ -178,6 +186,13 @@ export default function MapPage() {
       }
     }
   }, [isGlobalMeasure, isFreehandMeasure])
+
+  useEffect(() => {
+    globalAreaUnitRef.current = globalAreaUnit
+    if (mapInstanceRef.current && globalMeasureModeRef.current) {
+      updateGlobalMeasurePolygon(mapInstanceRef.current)
+    }
+  }, [globalAreaUnit])
 
   const [countries, setCountries] = useState([])
   const [states, setStates] = useState([])
@@ -232,42 +247,62 @@ export default function MapPage() {
   const nearbyLayerRef = useRef(null)
 
   const updateGlobalMeasurePolygon = (map) => {
-    const pts = globalMeasurePointsRef.current
     if (globalMeasureLayerRef.current) {
       map.removeLayer(globalMeasureLayerRef.current)
       globalMeasureLayerRef.current = null
     }
     
-    if (pts.length === 0) return
-    
     const layers = []
     
-    pts.forEach(pt => {
-      if (!freehandMeasureModeRef.current) {
-        layers.push(L.circleMarker(pt, { radius: 5, color: '#d97706', fillColor: '#fcd34d', fillOpacity: 1, weight: 2 }))
-      }
-    })
-    
-    if (pts.length === 2) {
-      layers.push(L.polyline(pts, { color: '#d97706', weight: 4, dashArray: freehandMeasureModeRef.current ? '' : '5 5' }))
-    } else if (pts.length > 2) {
-      const polygon = L.polygon(pts, { color: '#d97706', weight: 3, fillColor: '#f59e0b', fillOpacity: 0.35 })
-      
-      const areaSqm = calculateArea(pts)
+    // Draw finalized polygons
+    globalPolygonsRef.current.forEach(poly => {
+      const polygon = L.polygon(poly.points, { color: poly.color, weight: 3, fillColor: poly.color, fillOpacity: 0.35 })
+      const areaSqm = calculateArea(poly.points)
+      const unit = globalAreaUnitRef.current
       let areaStr = ''
-      if (areaSqm > 10000) {
-        areaStr = (areaSqm / 10000).toFixed(2) + ' hectares'
-      } else {
-        areaStr = Math.round(areaSqm) + ' sq meters'
-      }
+      if (unit === 'sqm') areaStr = Math.round(areaSqm).toLocaleString() + ' sq m'
+      else if (unit === 'hectares') areaStr = (areaSqm / 10000).toFixed(3) + ' ha'
+      else if (unit === 'acres') areaStr = (areaSqm * 0.000247105).toFixed(3) + ' acres'
+      else if (unit === 'sqft') areaStr = Math.round(areaSqm * 10.7639).toLocaleString() + ' sq ft'
       
       polygon.bindTooltip(`Area: ${areaStr}`, { permanent: true, direction: 'center', className: 'area-tooltip' })
       layers.push(polygon)
+    })
+    
+    // Draw currently drawing points
+    const pts = globalMeasurePointsRef.current
+    if (pts.length > 0) {
+      const activeColor = POLYGON_COLORS[globalPolygonsRef.current.length % POLYGON_COLORS.length]
+      
+      pts.forEach(pt => {
+        if (!freehandMeasureModeRef.current) {
+          layers.push(L.circleMarker(pt, { radius: 5, color: activeColor, fillColor: '#fff', fillOpacity: 1, weight: 2 }))
+        }
+      })
+      
+      if (pts.length === 2) {
+        layers.push(L.polyline(pts, { color: activeColor, weight: 4, dashArray: freehandMeasureModeRef.current ? '' : '5 5' }))
+      } else if (pts.length > 2) {
+        const polygon = L.polygon(pts, { color: activeColor, weight: 3, fillColor: activeColor, fillOpacity: 0.35 })
+        
+        const areaSqm = calculateArea(pts)
+        const unit = globalAreaUnitRef.current
+        let areaStr = ''
+        if (unit === 'sqm') areaStr = Math.round(areaSqm).toLocaleString() + ' sq m'
+        else if (unit === 'hectares') areaStr = (areaSqm / 10000).toFixed(3) + ' ha'
+        else if (unit === 'acres') areaStr = (areaSqm * 0.000247105).toFixed(3) + ' acres'
+        else if (unit === 'sqft') areaStr = Math.round(areaSqm * 10.7639).toLocaleString() + ' sq ft'
+        
+        polygon.bindTooltip(`Area: ${areaStr}`, { permanent: true, direction: 'center', className: 'area-tooltip' })
+        layers.push(polygon)
+      }
     }
     
-    const group = L.featureGroup(layers)
-    group.addTo(map)
-    globalMeasureLayerRef.current = group
+    if (layers.length > 0) {
+      const group = L.featureGroup(layers)
+      group.addTo(map)
+      globalMeasureLayerRef.current = group
+    }
   }
 
   const clearRouteAndNearby = () => {
@@ -508,6 +543,15 @@ export default function MapPage() {
     const handleGlobalMouseUp = () => {
       if (isDrawingFreehandRef.current) {
         isDrawingFreehandRef.current = false
+        const pts = globalMeasurePointsRef.current
+        if (pts.length > 2) {
+          const color = POLYGON_COLORS[globalPolygonsRef.current.length % POLYGON_COLORS.length]
+          globalPolygonsRef.current.push({ points: [...pts], color })
+        }
+        globalMeasurePointsRef.current = []
+        if (mapInstanceRef.current) {
+          updateGlobalMeasurePolygon(mapInstanceRef.current)
+        }
       }
     }
     window.addEventListener('mouseup', handleGlobalMouseUp)
@@ -525,6 +569,7 @@ export default function MapPage() {
         if (freehandMeasureModeRef.current) return // Click is handled by mousedown/up in freehand
         globalMeasurePointsRef.current.push(e.latlng)
         updateGlobalMeasurePolygon(map)
+        setMeasureRenderTrigger(prev => prev + 1)
         return
       }
       const sp = selectedPlotRef.current
@@ -569,6 +614,11 @@ export default function MapPage() {
         if (globalMeasurePointsRef.current.length > 0) {
           globalMeasurePointsRef.current.pop()
           updateGlobalMeasurePolygon(map)
+          setMeasureRenderTrigger(prev => prev + 1)
+        } else if (globalPolygonsRef.current.length > 0) {
+          globalPolygonsRef.current.pop()
+          updateGlobalMeasurePolygon(map)
+          setMeasureRenderTrigger(prev => prev + 1)
         } else {
           setIsGlobalMeasure(false)
         }
@@ -1456,6 +1506,7 @@ export default function MapPage() {
                  setIsGlobalMeasure(newVal)
                  if (!newVal) {
                    globalMeasurePointsRef.current = []
+                   globalPolygonsRef.current = []
                    updateGlobalMeasurePolygon(mapInstanceRef.current)
                  }
               }}
@@ -1478,11 +1529,26 @@ export default function MapPage() {
               {isGlobalMeasure ? 'Cancel Measuring' : 'Draw Area'}
             </button>
             {isGlobalMeasure && (
-              <div style={{ background: '#fff', padding: '0.75rem', borderRadius: '8px', fontSize: '0.85rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', border: '1px solid var(--color-border)', color: 'var(--color-text)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <div>
+              <div style={{ background: '#fff', padding: '0.75rem', borderRadius: '8px', fontSize: '0.85rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', border: '1px solid var(--color-border)', color: 'var(--color-text)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                   <strong>Click</strong> on map to draw points.<br/>
-                  <strong>Right-click</strong> to undo.
+                  <strong>Right-click</strong> to undo points or shapes.
                 </div>
+                
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <span style={{ fontWeight: '600' }}>Units:</span>
+                  <select 
+                    value={globalAreaUnit} 
+                    onChange={(e) => setGlobalAreaUnit(e.target.value)}
+                    style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem', height: 'auto', flex: 1, borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                  >
+                    <option value="sqm">Sq. Meters</option>
+                    <option value="hectares">Hectares</option>
+                    <option value="acres">Acres</option>
+                    <option value="sqft">Sq. Feet</option>
+                  </select>
+                </div>
+                
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', borderTop: '1px solid #f1f5f9', paddingTop: '0.5rem' }}>
                   <input 
                     type="checkbox" 
@@ -1494,8 +1560,24 @@ export default function MapPage() {
                 </label>
                 {isFreehandMeasure && (
                   <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '-0.2rem' }}>
-                    Click and drag mouse to draw continuously.
+                    Click & drag to draw a continuous shape.<br/>Release mouse to finish shape.
                   </div>
+                )}
+                {!isFreehandMeasure && globalMeasurePointsRef.current.length > 2 && (
+                  <button
+                    className="btn btn-primary"
+                    style={{ padding: '0.4rem', fontSize: '0.8rem', justifyContent: 'center' }}
+                    onClick={() => {
+                       const pts = globalMeasurePointsRef.current
+                       const color = POLYGON_COLORS[globalPolygonsRef.current.length % POLYGON_COLORS.length]
+                       globalPolygonsRef.current.push({ points: [...pts], color })
+                       globalMeasurePointsRef.current = []
+                       if (mapInstanceRef.current) updateGlobalMeasurePolygon(mapInstanceRef.current)
+                       setMeasureRenderTrigger(prev => prev + 1)
+                    }}
+                  >
+                    Finish Shape
+                  </button>
                 )}
               </div>
             )}
