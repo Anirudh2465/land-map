@@ -3,22 +3,16 @@ import tempfile
 import pytesseract
 from pdf2image import convert_from_path
 from PIL import Image
-from minio_client import get_minio_client
+from minio_client import download_file
 from config import settings
 
 def perform_ocr_on_document(storage_key: str) -> dict:
     """
-    Downloads a PDF from MinIO, converts to images, and runs Tesseract OCR.
+    Downloads a PDF from Supabase Storage, converts to images, and runs Tesseract OCR.
     Returns extracted text and simple metrics.
     """
     # 1. Download file to a temporary location
-    client = get_minio_client()
-    try:
-        response = client.get_object(settings.MINIO_BUCKET, storage_key)
-        pdf_bytes = response.read()
-    finally:
-        response.close()
-        response.release_conn()
+    pdf_bytes = download_file(storage_key)
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as temp_pdf:
         temp_pdf.write(pdf_bytes)

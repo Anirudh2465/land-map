@@ -17,6 +17,11 @@ def upload_file(object_name: str, data: bytes, content_type: str = "application/
     )
     return object_name
 
+def download_file(object_name: str) -> bytes:
+    """Download bytes from Supabase Storage."""
+    client = get_supabase_client()
+    return client.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(object_name)
+
 def get_presigned_url(object_name: str, expires_seconds: int = 3600) -> str:
     """Generate a presigned GET URL valid for `expires_seconds`."""
     client = get_supabase_client()
