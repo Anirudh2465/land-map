@@ -39,7 +39,6 @@ routers = [
 ]
 
 for r in routers:
-    app.include_router(r)
     app.include_router(r, prefix="/api")
 
 

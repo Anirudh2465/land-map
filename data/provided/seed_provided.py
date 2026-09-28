@@ -33,6 +33,8 @@ def main():
     args = parser.parse_args()
 
     api_url = args.api_url.rstrip("/")
+    if not api_url.endswith("/api"):
+        api_url = f"{api_url}/api"
     base_dir = Path(__file__).parent.resolve()
 
     print(f"\n=======================================================")
