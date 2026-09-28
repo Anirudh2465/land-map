@@ -1940,6 +1940,15 @@ export default function MapPage() {
                     </div>
                   )
                 })()}
+                
+                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
+                  <button className="btn btn-outline" style={{ flex: 1, padding: '0.5rem', fontSize: '0.85rem', fontWeight: '600' }} title="View RSR">
+                    RSR
+                  </button>
+                  <button className="btn btn-outline" style={{ flex: 1, padding: '0.5rem', fontSize: '0.85rem', fontWeight: '600' }} title="View Master Plan">
+                    Master Plan
+                  </button>
+                </div>
               </div>
                 </>
               )}
