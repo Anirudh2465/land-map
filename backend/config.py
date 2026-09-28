@@ -10,12 +10,11 @@ class Settings(BaseSettings):
     # Admin seed
     ADMIN_PASSWORD: str = "Admin@1234"
 
-    # MinIO
-    MINIO_ENDPOINT: str = "minio:9000"
-    MINIO_ACCESS_KEY: str = "lpms_minio_user"
-    MINIO_SECRET_KEY: str = "lpms_minio_password"
-    MINIO_BUCKET: str = "lpms-documents"
-    MINIO_SECURE: bool = False
+    # Supabase Configuration
+    SUPABASE_URL: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
+    SUPABASE_STORAGE_BUCKET: str = "geospatial"
+    SUPABASE_PUBLISHABLE_KEY: str = ""
 
     # AI Configuration
     GEMINI_API_KEY: str = ""

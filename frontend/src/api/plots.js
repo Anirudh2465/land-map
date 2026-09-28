@@ -19,10 +19,11 @@ export async function extractKml(file) {
   return data
 }
 
-export async function createPlot(formData) {
+export async function createPlot(formData, onUploadProgress) {
   // formData must be a FormData object (multipart)
   const res = await client.post('/plots', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: onUploadProgress
   })
   return res.data
 }

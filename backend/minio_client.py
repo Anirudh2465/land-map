@@ -1,58 +1,29 @@
 """
-Shared MinIO client helper.
+Supabase Storage client helper.
 """
-from minio import Minio
-from minio.error import S3Error
+from supabase import create_client, Client
 from config import settings
-import io
 
-
-def get_minio_client() -> Minio:
-    return Minio(
-        settings.MINIO_ENDPOINT,
-        access_key=settings.MINIO_ACCESS_KEY,
-        secret_key=settings.MINIO_SECRET_KEY,
-        secure=settings.MINIO_SECURE,
-    )
-
+def get_supabase_client() -> Client:
+    return create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
 
 def upload_file(object_name: str, data: bytes, content_type: str = "application/octet-stream") -> str:
-    """Upload bytes to MinIO and return the object key."""
-    client = get_minio_client()
-    client.put_object(
-        settings.MINIO_BUCKET,
-        object_name,
-        io.BytesIO(data),
-        length=len(data),
-        content_type=content_type,
+    """Upload bytes to Supabase Storage and return the object key."""
+    client = get_supabase_client()
+    client.storage.from_(settings.SUPABASE_STORAGE_BUCKET).upload(
+        path=object_name,
+        file=data,
+        file_options={"content-type": content_type, "upsert": "true"}
     )
     return object_name
 
-
-def get_public_minio_client() -> Minio:
-    # Use localhost:9000 for generating presigned URLs meant for the browser
-    # so the Host header in the signature matches the browser's request.
-    endpoint = settings.MINIO_ENDPOINT.replace("minio:9000", "localhost:9000")
-    return Minio(
-        endpoint,
-        access_key=settings.MINIO_ACCESS_KEY,
-        secret_key=settings.MINIO_SECRET_KEY,
-        secure=settings.MINIO_SECURE,
-        region="us-east-1",  # Prevents client from making network calls to determine region
-    )
-
-
 def get_presigned_url(object_name: str, expires_seconds: int = 3600) -> str:
     """Generate a presigned GET URL valid for `expires_seconds`."""
-    from datetime import timedelta
-    client = get_public_minio_client()
-    url = client.presigned_get_object(
-        settings.MINIO_BUCKET,
-        object_name,
-        expires=timedelta(seconds=expires_seconds),
+    client = get_supabase_client()
+    res = client.storage.from_(settings.SUPABASE_STORAGE_BUCKET).create_signed_url(
+        path=object_name,
+        expires_in=expires_seconds
     )
-    return url
-
-
-# Module-level client instance for convenience
-minio_client = get_minio_client()
+    if isinstance(res, dict):
+        return res.get("signedURL", res.get("signedUrl", ""))
+    return str(res)

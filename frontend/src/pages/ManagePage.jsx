@@ -57,6 +57,7 @@ export default function ManagePage() {
   const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
   const [formError, setFormError] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState(null) // plot id
 
@@ -208,12 +209,18 @@ export default function ManagePage() {
       if (aerialPhotoFile) aerialPhotoFile.forEach(f => fd.append('aerial_photo_file', f))
       if (disputeDetailsFile) disputeDetailsFile.forEach(f => fd.append('dispute_details_file', f))
 
-      await createPlot(fd)
+      setUploadProgress(0)
+      await createPlot(fd, (progressEvent) => {
+        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+        setUploadProgress(percentCompleted);
+      })
       resetForm()
       setShowForm(false)
+      setUploadProgress(0)
       loadPlots()
     } catch (err) {
       setFormError(err.response?.data?.detail || 'Failed to create parcel.')
+      setUploadProgress(0)
     } finally {
       setSubmitting(false)
     }
@@ -624,10 +631,20 @@ export default function ManagePage() {
                 </div>
                 
                 <div className="modal-footer">
-                  <button type="button" className="btn btn-outline" onClick={() => setShowForm(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-primary" disabled={submitting || !form.land_id || !form.land_name || !kmlFile}>
-                    {submitting ? 'Saving…' : 'Create Parcel'}
-                  </button>
+                  <button type="button" className="btn btn-outline" onClick={() => setShowForm(false)} disabled={submitting}>Cancel</button>
+                  
+                  {submitting ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', width: '200px' }}>
+                      <div style={{ flex: 1, height: '8px', background: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                        <div style={{ width: `${uploadProgress}%`, height: '100%', background: 'var(--color-primary)', transition: 'width 0.3s ease' }} />
+                      </div>
+                      <span style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text)' }}>{uploadProgress}%</span>
+                    </div>
+                  ) : (
+                    <button type="submit" className="btn btn-primary" disabled={!form.land_id || !form.land_name || !kmlFile}>
+                      Create Parcel
+                    </button>
+                  )}
                 </div>
               </form>
             </div>
