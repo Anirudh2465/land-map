@@ -246,6 +246,24 @@ export default function MapPage() {
   const [nearbyRadius, setNearbyRadius] = useState(2000)
   const nearbyLayerRef = useRef(null)
 
+  // Document Folder State
+  const [expandedFolders, setExpandedFolders] = useState({})
+
+  const toggleFolder = (docType) => {
+    setExpandedFolders(prev => ({ ...prev, [docType]: !prev[docType] }))
+  }
+
+  const getOriginalFilename = (storageKey, docType) => {
+    if (!storageKey) return 'Document';
+    const parts = storageKey.split('/');
+    const fileWithPrefix = parts[parts.length - 1];
+    const regex = new RegExp(`^${docType}_\\d+_`);
+    if (regex.test(fileWithPrefix)) {
+      return fileWithPrefix.replace(regex, '');
+    }
+    return fileWithPrefix;
+  }
+
   const updateGlobalMeasurePolygon = (map) => {
     if (globalMeasureLayerRef.current) {
       map.removeLayer(globalMeasureLayerRef.current)
@@ -1869,6 +1887,7 @@ export default function MapPage() {
                         const title = docType.replace(/_/g, ' ')
                         if (docs.length === 1) {
                           const doc = docs[0]
+                          const filename = getOriginalFilename(doc.storage_key, docType)
                           return (
                             <div key={doc.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.75rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
                               <span style={{ fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.45rem', color: '#0f172a' }}>
@@ -1876,32 +1895,44 @@ export default function MapPage() {
                                 <span style={{ textTransform: 'capitalize' }}>{title}</span>
                               </span>
                               <div style={{ display: 'flex', gap: '0.35rem' }}>
-                                <button className="btn btn-outline btn-sm" onClick={() => handlePreviewPdf(doc)} disabled={pdfLoading} title="Preview Document" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px' }}><Eye size={13} /></button>
-                                <button className="btn btn-primary btn-sm" onClick={() => handleDownloadPdf(doc)} title="Download Document" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px' }}><Download size={13} /></button>
+                                <button className="btn btn-outline btn-sm" onClick={() => handlePreviewPdf(doc)} disabled={pdfLoading} title={`Preview ${filename}`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px' }}><Eye size={13} /></button>
+                                <button className="btn btn-primary btn-sm" onClick={() => handleDownloadPdf(doc)} title={`Download ${filename}`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px' }}><Download size={13} /></button>
                               </div>
                             </div>
                           )
                         } else {
+                          const isExpanded = expandedFolders[docType]
                           return (
-                            <div key={docType} style={{ padding: '0.55rem 0.75rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
-                              <div style={{ fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.45rem', color: '#0f172a', marginBottom: '0.5rem' }}>
-                                <Folder size={15} style={{ color: 'var(--color-primary)' }} />
-                                <span style={{ textTransform: 'capitalize' }}>{title} ({docs.length})</span>
+                            <div key={docType} style={{ background: '#f8fafc', borderRadius: '8px', border: '1px solid var(--color-border)', overflow: 'hidden' }}>
+                              <div 
+                                onClick={() => toggleFolder(docType)}
+                                style={{ padding: '0.55rem 0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: isExpanded ? '#f1f5f9' : 'transparent', transition: 'background 0.2s ease' }}
+                              >
+                                <div style={{ fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.45rem', color: '#0f172a' }}>
+                                  <Folder size={15} style={{ color: 'var(--color-primary)' }} />
+                                  <span style={{ textTransform: 'capitalize' }}>{title} ({docs.length})</span>
+                                </div>
+                                {isExpanded ? <ChevronDown size={16} color="var(--color-text-muted)" /> : <ChevronRight size={16} color="var(--color-text-muted)" />}
                               </div>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', paddingLeft: '1.25rem', borderLeft: '1px dashed var(--color-border)', marginLeft: '0.4rem' }}>
-                                {docs.map((doc, idx) => (
-                                  <div key={doc.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.25rem 0' }}>
-                                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                                      <FileText size={13} color="var(--color-text-muted)" />
-                                      {title} #{idx + 1}
-                                    </span>
-                                    <div style={{ display: 'flex', gap: '0.25rem' }}>
-                                      <button className="btn btn-outline btn-sm" onClick={() => handlePreviewPdf(doc)} disabled={pdfLoading} title="Preview Document" style={{ padding: '0.15rem 0.35rem', fontSize: '0.7rem', borderRadius: '4px' }}><Eye size={12} /></button>
-                                      <button className="btn btn-primary btn-sm" onClick={() => handleDownloadPdf(doc)} title="Download Document" style={{ padding: '0.15rem 0.35rem', fontSize: '0.7rem', borderRadius: '4px' }}><Download size={12} /></button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
+                              {isExpanded && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.5rem 0.75rem', paddingLeft: '1.75rem', borderTop: '1px solid #e2e8f0', background: '#fff' }}>
+                                  {docs.map((doc, idx) => {
+                                    const filename = getOriginalFilename(doc.storage_key, docType)
+                                    return (
+                                      <div key={doc.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.25rem 0' }}>
+                                        <span style={{ fontSize: '0.75rem', color: 'var(--color-text)', display: 'flex', alignItems: 'center', gap: '0.4rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '60%' }} title={filename}>
+                                          <FileText size={13} color="var(--color-text-muted)" style={{ flexShrink: 0 }} />
+                                          {filename}
+                                        </span>
+                                        <div style={{ display: 'flex', gap: '0.25rem', flexShrink: 0 }}>
+                                          <button className="btn btn-outline btn-sm" onClick={() => handlePreviewPdf(doc)} disabled={pdfLoading} title="Preview Document" style={{ padding: '0.15rem 0.35rem', fontSize: '0.7rem', borderRadius: '4px' }}><Eye size={12} /></button>
+                                          <button className="btn btn-primary btn-sm" onClick={() => handleDownloadPdf(doc)} title="Download Document" style={{ padding: '0.15rem 0.35rem', fontSize: '0.7rem', borderRadius: '4px' }}><Download size={12} /></button>
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              )}
                             </div>
                           )
                         }
