@@ -5,6 +5,7 @@ import LoginPage from './pages/LoginPage'
 import NavigatorPage from './pages/NavigatorPage'
 import MapPage from './pages/MapPage'
 import ManagePage from './pages/ManagePage'
+import ServerWarmupOverlay from './components/ServerWarmupOverlay'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -44,10 +45,12 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
-    </AuthProvider>
+    <ServerWarmupOverlay>
+      <AuthProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </AuthProvider>
+    </ServerWarmupOverlay>
   )
 }
