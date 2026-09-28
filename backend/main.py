@@ -20,19 +20,27 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "https://lms-fork.vercel.app",
     ],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ── Routers ───────────────────────────────────────────────────────────────────
-app.include_router(auth_router.router)
-app.include_router(geo_router.router)
-app.include_router(plots_router.router)
-app.include_router(documents_router.router)
-app.include_router(ai_router.router)
-app.include_router(routing_router.router)
+routers = [
+    auth_router.router,
+    geo_router.router,
+    plots_router.router,
+    documents_router.router,
+    ai_router.router,
+    routing_router.router,
+]
+
+for r in routers:
+    app.include_router(r)
+    app.include_router(r, prefix="/api")
 
 
 @app.get("/")
