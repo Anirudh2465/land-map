@@ -16,6 +16,13 @@ import argparse
 from pathlib import Path
 import httpx
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 def main():
     parser = argparse.ArgumentParser(description="Automate parcel creation in LPMS from manifests.")
     parser.add_argument("--api-url", default=os.environ.get("API_URL", "http://127.0.0.1:8000"), help="Backend API Base URL")
