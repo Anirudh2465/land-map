@@ -93,6 +93,33 @@ const TN_DISTRICTS = [
   'Vellore', 'Villupuram', 'Virudhunagar',
 ]
 
+const CBE_VILLAGES = [
+  'Bogampatti',
+  'Madukkarai',
+  'Annur',
+  'Chettipalayam',
+  'Irugur',
+  'Kalapatti',
+  'Karamadai',
+  'Kinathukadavu',
+  'Kottur',
+  'Malumichampatti',
+  'Narasimhanaickenpalayam',
+  'Othakkalmandapam',
+  'Perur',
+  'Pollachi',
+  'Saravanampatti',
+  'Sulur',
+  'Thondamuthur',
+  'Valparai',
+  'Vedapatti',
+]
+
+const VILLAGE_COORDS = {
+  'Bogampatti': { center: [10.8972, 77.0884], zoom: 15 },
+  'Madukkarai': { center: [10.8995, 76.9445], zoom: 15 },
+}
+
 const PARCEL_STYLE = {
   color: '#2563eb',
   weight: 2,
@@ -147,6 +174,7 @@ export default function MapPage() {
   const [isBlurOverlayVisible, setIsBlurOverlayVisible] = useState(!districtId)
   const [selectedState, setSelectedState] = useState('Tamil Nadu')
   const [selectedDistrict, setSelectedDistrict] = useState('Coimbatore')
+  const [selectedVillage, setSelectedVillage] = useState('Bogampatti')
   const [activeDistrictId, setActiveDistrictId] = useState(districtId || null)
   
   const [isMeasureMode, setIsMeasureMode] = useState(false)
@@ -950,17 +978,47 @@ export default function MapPage() {
           targetId = node.id
           setActiveDistrictId(node.id)
         }
-      } else {
-        if (plots.length === 0) {
-          setLoading(true)
-          getPlots(targetId)
-            .then(setPlots)
-            .catch(err => setError(err.response?.data?.detail || 'Failed to load parcels.'))
-            .finally(() => setLoading(false))
-        }
+      }
+      if (plots.length === 0 && targetId) {
+        setLoading(true)
+        getPlots(targetId)
+          .then(setPlots)
+          .catch(err => setError(err.response?.data?.detail || 'Failed to load parcels.'))
+          .finally(() => setLoading(false))
       }
     } catch (e) {
       console.error('Error fetching Coimbatore node:', e)
+    }
+
+    const timer = setTimeout(() => {
+      setCurrentStep('VILLAGE')
+      setIsBlurOverlayVisible(true)
+      if (map) map.invalidateSize()
+    }, 1050)
+    if (map) {
+      map.once('moveend', () => {
+        clearTimeout(timer)
+        setCurrentStep('VILLAGE')
+        setIsBlurOverlayVisible(true)
+        map.invalidateSize()
+      })
+    }
+  }
+
+  async function handleSelectVillage(villageToSelect) {
+    const target = villageToSelect || selectedVillage || 'Bogampatti'
+    if (!VILLAGE_COORDS[target]) {
+      // Non-working options just not responsive as requested
+      return
+    }
+    setSelectedVillage(target)
+
+    setIsBlurOverlayVisible(false)
+    setCurrentStep('PANNING_VILLAGE')
+    const dest = VILLAGE_COORDS[target]
+    const map = mapInstanceRef.current
+    if (map) {
+      map.flyTo(dest.center, dest.zoom, { duration: 1.0, easeLinearity: 0.25 })
     }
 
     const timer = setTimeout(() => {
@@ -976,6 +1034,16 @@ export default function MapPage() {
     }
   }
 
+  function handleSkipVillage() {
+    setSelectedVillage('')
+    setIsBlurOverlayVisible(false)
+    setCurrentStep('READY')
+    const map = mapInstanceRef.current
+    if (map) {
+      map.invalidateSize()
+    }
+  }
+
   function handleBack() {
     if (selectedPlot) {
       handleClosePanel()
@@ -985,9 +1053,16 @@ export default function MapPage() {
     const map = mapInstanceRef.current
 
     if (currentStep === 'READY') {
-      setPlots([])
       setSelectedPlot(null)
-      setActiveDistrictId(null)
+      setCurrentStep('VILLAGE')
+      setIsBlurOverlayVisible(true)
+      if (map) {
+        map.flyTo(CBE_BOUNDS.getCenter(), 11, { duration: 1.0 })
+      }
+      return
+    }
+
+    if (currentStep === 'VILLAGE') {
       setCurrentStep('DISTRICT')
       setIsBlurOverlayVisible(true)
       if (map) {
@@ -1024,11 +1099,11 @@ export default function MapPage() {
 
   const getHeaderCenter = () => {
     if (currentStep === 'READY') {
-      const parcelCount = plots.filter(p => p.boundary_geojson).length
+      const parcelCount = filteredPlots.filter(p => p.boundary_geojson).length
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
           <span className="header-center-title">
-            {activeNode ? activeNode.name : 'Region'} — Land Parcels
+            {selectedVillage || (activeNode ? activeNode.name : 'Coimbatore')} — Land Parcels
           </span>
           {loading ? (
             <span className="spinner" />
@@ -1038,6 +1113,14 @@ export default function MapPage() {
             </span>
           )}
         </div>
+      )
+    }
+
+    if (currentStep === 'VILLAGE' || currentStep === 'PANNING_VILLAGE') {
+      return (
+        <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
+          Coimbatore › Select Village or Subdistrict
+        </span>
       )
     }
 
@@ -1433,6 +1516,14 @@ export default function MapPage() {
   }
 
   const filteredPlots = plots.filter(plot => {
+    if (selectedVillage === 'Bogampatti') {
+      const match = (plot.plot_number || '').toUpperCase().startsWith('BOG') || (plot.landmark || '').toLowerCase().includes('bogampatti') || (plot.location_name || '').toLowerCase().includes('bogampatti')
+      if (!match) return false
+    } else if (selectedVillage === 'Madukkarai') {
+      const match = (plot.plot_number || '').toUpperCase().startsWith('MAD') || (plot.landmark || '').toLowerCase().includes('madukkarai') || (plot.location_name || '').toLowerCase().includes('madukkarai')
+      if (!match) return false
+    }
+
     if (!searchQuery.trim()) return true
     const q = searchQuery.toLowerCase().trim()
     const pNum = (plot.plot_number || '').toLowerCase()
@@ -1488,7 +1579,7 @@ export default function MapPage() {
             {isSearchOpen && (
               <div className="search-dropdown-menu">
                 <div className="search-dropdown-header">
-                  <span>Parcels in Region ({filteredPlots.length})</span>
+                  <span>Parcels in {selectedVillage || 'Region'} ({filteredPlots.length})</span>
                 </div>
                 <div className="search-dropdown-list">
                   {filteredPlots.map(plot => {
@@ -2261,14 +2352,11 @@ export default function MapPage() {
                     </button>
                     <button
                       className="selection-option-btn"
-                      style={{ opacity: 0.65, cursor: 'not-allowed' }}
                       onClick={() => {}}
-                      disabled
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
                         <img src="/globe-small.png" alt="Overseas" className="selection-option-img" />
                         <span style={{ fontWeight: '600' }}>Overseas</span>
-                        <span className="coming-soon-tag">Coming Soon</span>
                       </span>
                       <ChevronRight size={18} style={{ color: 'var(--color-text-muted)' }} />
                     </button>
@@ -2294,7 +2382,7 @@ export default function MapPage() {
                     >
                       <option value="Tamil Nadu">Tamil Nadu {tnPlotCount > 0 ? `(${tnPlotCount} parcels)` : ''}</option>
                       {INDIA_STATES.filter(s => s !== 'Tamil Nadu').map(s => (
-                        <option key={s} value={s} disabled>{s} (Coming Soon)</option>
+                        <option key={s} value={s}>{s}</option>
                       ))}
                     </select>
                   </div>
@@ -2330,7 +2418,7 @@ export default function MapPage() {
                     >
                       <option value="Coimbatore">Coimbatore {cbePlotCount > 0 ? `(${cbePlotCount} parcels)` : ''}</option>
                       {TN_DISTRICTS.filter(d => d !== 'Coimbatore').map(d => (
-                        <option key={d} value={d} disabled>{d} (Coming Soon)</option>
+                        <option key={d} value={d}>{d}</option>
                       ))}
                     </select>
                   </div>
@@ -2343,8 +2431,51 @@ export default function MapPage() {
                       }
                     }}
                   >
-                    Explore District Parcels →
+                    Continue to District →
                   </button>
+                </div>
+              )}
+
+              {currentStep === 'VILLAGE' && (
+                <div className="map-selection-card">
+                  <div className="map-selection-header">
+                    <div className="map-selection-icon">
+                      <img src="/CoimbatoreMap.png" alt="Coimbatore" />
+                    </div>
+                    <h2 className="map-selection-title">Select Village or Subdistrict</h2>
+                    <p className="map-selection-subtitle">Coimbatore • Choose village or subdistrict to view land parcels</p>
+                  </div>
+                  <div className="selection-dropdown-wrapper">
+                    <label className="form-label" style={{ marginBottom: '0.5rem', fontWeight: '600' }}>Village / Subdistrict</label>
+                    <select
+                      className="selection-select"
+                      value={selectedVillage || 'Bogampatti'}
+                      onChange={e => setSelectedVillage(e.target.value)}
+                    >
+                      <option value="Bogampatti">Bogampatti ({plots.filter(p => (p.plot_number || '').startsWith('BOG')).length || 10} parcels)</option>
+                      <option value="Madukkarai">Madukkarai ({plots.filter(p => (p.plot_number || '').startsWith('MAD')).length || 1} parcel)</option>
+                      {CBE_VILLAGES.filter(v => v !== 'Bogampatti' && v !== 'Madukkarai').map(v => (
+                        <option key={v} value={v}>{v}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.25rem' }}>
+                    <button
+                      className="btn btn-primary"
+                      style={{ width: '100%', justifyContent: 'center', padding: '0.85rem', fontWeight: '600' }}
+                      onClick={() => handleSelectVillage()}
+                    >
+                      Explore Village Parcels →
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      style={{ width: '100%', justifyContent: 'center', padding: '0.7rem', fontWeight: '500', color: 'var(--color-text-muted)' }}
+                      onClick={handleSkipVillage}
+                    >
+                      Skip
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
