@@ -1,0 +1,18 @@
+{
+  "land_id": "BOG-70",
+  "land_name": "Bogampatti Consolidated Estate 70",
+  "owner_name": "LMW",
+  "plot_type": "Industrial / Commercial Land",
+  "year_of_registration": "1994",
+  "landmark": "Bogampatti Village, Sulur Taluk",
+  "address": "",
+  "documents": {
+    "kml_file": "SF_70.kml",
+    "deed_file": "Bogampatti - 3718 - 1994.pdf",
+    "parent_document_file": "Bogampatti - Parent doc - 1969.pdf",
+    "fmb_file": "SF_70.pdf",
+    "patta_file": "patta_all.pdf",
+    "ec_details_file": "Bogampatti - EC.pdf",
+    "property_tax_file": "1434 FASLI - Bogampatti.pdf"
+  }
+}

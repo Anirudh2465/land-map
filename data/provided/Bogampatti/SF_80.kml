@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+	<name>SF_80</name>
+	<Placemark>
+		<name>SF_80</name>
+		<Polygon>
+			<outerBoundaryIs>
+				<LinearRing>
+					<coordinates>77.089857,10.898323,0 77.089225,10.898411,0 77.08872,10.898482,0 77.08873,10.898758,0 77.088577,10.89875,0 77.088193,10.900035,0 77.088264,10.900449,0 77.088443,10.90064,0 77.09025,10.901166,0 77.090401,10.900488,0 77.089986,10.898917,0 77.089918,10.898637,0 77.089857,10.898323,0</coordinates>
+				</LinearRing>
+			</outerBoundaryIs>
+		</Polygon>
+	</Placemark>
+</Document>
+</kml>
