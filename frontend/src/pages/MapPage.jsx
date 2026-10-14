@@ -309,11 +309,7 @@ export default function MapPage() {
     if (!storageKey) return 'Document';
     const parts = storageKey.split('/');
     const fileWithPrefix = parts[parts.length - 1];
-    const regex = new RegExp(`^${docType}_\\d+_`);
-    if (regex.test(fileWithPrefix)) {
-      return fileWithPrefix.replace(regex, '');
-    }
-    return fileWithPrefix;
+    return fileWithPrefix.replace(/^[A-Za-z0-9_]+?_\d+_/, '');
   }
 
   const updateGlobalMeasurePolygon = (map) => {
@@ -1380,7 +1376,7 @@ export default function MapPage() {
   // ── PDF Preview & Download ───────────────────────────────────────────
   async function handlePreviewPdf(doc) {
     try {
-      const { url } = await getDocumentUrl(doc.id)
+      const { url } = await getDocumentUrl(doc.id, false)
       setPdfModal({ url, docType: doc.doc_type })
     } catch {
       alert('Failed to get document URL.')
@@ -1391,13 +1387,25 @@ export default function MapPage() {
 
   async function handleDownloadPdf(doc) {
     try {
+      let downloadUrl = ''
+      let filename = getOriginalFilename(doc.storage_key, doc.doc_type, doc.isDefaultKml)
+
       if (doc.isDefaultKml || doc.doc_type === 'SOURCE_KML' || doc.doc_type === 'KML') {
-        const { url } = await getPlotKmlUrl(selectedPlot.id)
-        window.open(url, '_blank', 'noopener,noreferrer')
-        return
+        const res = await getPlotKmlUrl(selectedPlot.id)
+        downloadUrl = res.url
+        if (res.filename) filename = res.filename
+      } else {
+        const res = await getDocumentUrl(doc.id, true)
+        downloadUrl = res.url
+        if (res.filename) filename = res.filename
       }
-      const { url } = await getDocumentUrl(doc.id)
-      window.open(url, '_blank', 'noopener,noreferrer')
+
+      const link = document.createElement('a')
+      link.href = downloadUrl
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
     } catch {
       alert('Failed to generate document download link.')
     }

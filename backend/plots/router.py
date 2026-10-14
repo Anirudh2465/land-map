@@ -12,7 +12,8 @@ from shapely.geometry import mapping
 from database import get_db
 from models import Plot, Document, GeoNode
 from auth.dependencies import require_admin
-from minio_client import upload_file, get_presigned_url
+import re
+from minio_client import upload_file, get_presigned_url, get_content_type
 from kml_parser import extract_polygon_from_kml
 from plots.schemas import PlotListItem, PlotDetail, DocumentOut
 
@@ -289,7 +290,7 @@ async def create_plot(
             if upload and upload.filename:
                 file_bytes = await upload.read()
                 if file_bytes:
-                    ct = upload.content_type or default_ct
+                    ct = get_content_type(upload.filename, fallback=upload.content_type or default_ct)
                     key = f"documents/{plot_id}/{doc_type}_{idx}_{upload.filename}"
                     upload_file(key, file_bytes, content_type=ct)
                     doc = Document(
@@ -434,7 +435,7 @@ async def update_plot(
             if upload and upload.filename:
                 file_bytes = await upload.read()
                 if file_bytes:
-                    ct = upload.content_type or default_ct
+                    ct = get_content_type(upload.filename, fallback=upload.content_type or default_ct)
                     key = f"documents/{plot_id}/{doc_type}_{idx}_{upload.filename}"
                     upload_file(key, file_bytes, content_type=ct)
                     doc = Document(
@@ -466,9 +467,16 @@ def get_plot_kml_url(plot_id: UUID, db: Session = Depends(get_db)):
         Document.doc_type == "SOURCE_KML"
     ).order_by(Document.uploaded_at.desc()).first()
 
-    storage_key = custom_kml.storage_key if custom_kml else (plot.source_file_key or f"kml/{plot_id}.kml")
-    url = get_presigned_url(storage_key, expires_seconds=3600)
-    return {"url": url, "storage_key": storage_key, "is_custom": custom_kml is not None}
+    if custom_kml:
+        storage_key = custom_kml.storage_key
+        raw_name = storage_key.split("/")[-1]
+        clean_filename = re.sub(r"^[A-Za-z0-9_]+?_\d+_", "", raw_name)
+    else:
+        storage_key = plot.source_file_key or f"kml/{plot_id}.kml"
+        clean_filename = f"{plot.plot_number or 'parcel'}_boundary.kml"
+
+    url = get_presigned_url(storage_key, expires_seconds=3600, download_filename=clean_filename)
+    return {"url": url, "storage_key": storage_key, "filename": clean_filename, "is_custom": custom_kml is not None}
 
 
 @router.delete("/{plot_id}", status_code=status.HTTP_204_NO_CONTENT)
