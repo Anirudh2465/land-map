@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from database import get_db
 from models import Document
 from minio_client import get_presigned_url
+from auth.dependencies import require_admin
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -24,3 +25,17 @@ def get_document_url(doc_id: UUID, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Document not found")
     url = get_presigned_url(doc.storage_key, expires_seconds=3600)
     return PresignedUrlOut(url=url, doc_type=doc.doc_type)
+
+
+@router.delete("/{doc_id}", status_code=204)
+def delete_document(
+    doc_id: UUID,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin),
+):
+    """Delete a document. Admin only."""
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    db.delete(doc)
+    db.commit()

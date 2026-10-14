@@ -29,6 +29,7 @@ class PlotListItem(BaseModel):
     owner_name: Optional[str] = None
     # GeoJSON geometry for map rendering
     boundary_geojson: Optional[dict] = None
+    source_file_key: Optional[str] = None
     # Include docs for manage page count badge
     documents: List[DocumentOut] = []
 

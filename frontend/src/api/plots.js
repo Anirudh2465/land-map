@@ -28,6 +28,20 @@ export async function createPlot(formData, onUploadProgress) {
   return res.data
 }
 
+export async function updatePlot(plotId, formData, onUploadProgress) {
+  // formData must be a FormData object (multipart)
+  const res = await client.put(`/plots/${plotId}`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: onUploadProgress,
+  })
+  return res.data
+}
+
+export async function getPlotKmlUrl(plotId) {
+  const { data } = await client.get(`/plots/${plotId}/kml-url`)
+  return data
+}
+
 export async function deletePlot(plotId) {
   await client.delete(`/plots/${plotId}`)
 }

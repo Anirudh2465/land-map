@@ -12,7 +12,7 @@ from shapely.geometry import mapping
 from database import get_db
 from models import Plot, Document, GeoNode
 from auth.dependencies import require_admin
-from minio_client import upload_file
+from minio_client import upload_file, get_presigned_url
 from kml_parser import extract_polygon_from_kml
 from plots.schemas import PlotListItem, PlotDetail, DocumentOut
 
@@ -49,6 +49,7 @@ def _plot_to_list_item(plot: Plot) -> PlotListItem:
         year_of_registration=plot.year_of_registration,
         owner_name=plot.owner_name,
         boundary_geojson=_geometry_to_geojson(plot.boundary),
+        source_file_key=plot.source_file_key,
         documents=docs,
     )
 
@@ -70,6 +71,7 @@ def _plot_to_detail(plot: Plot) -> PlotDetail:
         year_of_registration=plot.year_of_registration,
         owner_name=plot.owner_name,
         boundary_geojson=_geometry_to_geojson(plot.boundary),
+        source_file_key=plot.source_file_key,
         survey_number=plot.survey_number,
         classification=plot.classification,
         status=plot.status,
@@ -171,6 +173,11 @@ async def create_plot(
     property_tax_file: List[UploadFile] = File(default=[]),
     aerial_photo_file: List[UploadFile] = File(default=[]),
     dispute_details_file: List[UploadFile] = File(default=[]),
+    adangal_file: List[UploadFile] = File(default=[]),
+    a_register_file: List[UploadFile] = File(default=[]),
+    approved_plan_file: List[UploadFile] = File(default=[]),
+    source_kml_file: List[UploadFile] = File(default=[]),
+    shapefile_file: List[UploadFile] = File(default=[]),
     db: Session = Depends(get_db),
     current_user=Depends(require_admin),
 ):
@@ -258,27 +265,33 @@ async def create_plot(
     db.add(plot)
     db.flush()  # get plot.id
 
-    # ── Upload PDFs ───────────────────────────────────────────────────────
-    pdf_files_groups = [
-        ("FMB", fmb_file),
-        ("PATTA", patta_file),
-        ("DEED", deed_file),
-        ("PARENT_DOCUMENT", parent_document_file),
-        ("EC_DETAILS", ec_details_file),
-        ("BUILDING_PLAN", building_plan_file),
-        ("PLAN_APPROVAL", plan_approval_letter_file),
-        ("BUILDING_PERMIT", building_permit_letter_file),
-        ("PROPERTY_TAX", property_tax_file),
-        ("AERIAL_PHOTO", aerial_photo_file),
-        ("DISPUTE_DETAILS", dispute_details_file),
+    # ── Upload Documents ──────────────────────────────────────────────────
+    upload_files_groups = [
+        ("FMB", fmb_file, "application/pdf"),
+        ("PATTA", patta_file, "application/pdf"),
+        ("DEED", deed_file, "application/pdf"),
+        ("PARENT_DOCUMENT", parent_document_file, "application/pdf"),
+        ("EC_DETAILS", ec_details_file, "application/pdf"),
+        ("BUILDING_PLAN", building_plan_file, "application/pdf"),
+        ("PLAN_APPROVAL", plan_approval_letter_file, "application/pdf"),
+        ("BUILDING_PERMIT", building_permit_letter_file, "application/pdf"),
+        ("PROPERTY_TAX", property_tax_file, "application/pdf"),
+        ("AERIAL_PHOTO", aerial_photo_file, "application/pdf"),
+        ("DISPUTE_DETAILS", dispute_details_file, "application/pdf"),
+        ("ADANGAL", adangal_file, "application/pdf"),
+        ("A_REGISTER", a_register_file, "application/pdf"),
+        ("APPROVED_PLAN", approved_plan_file, "application/pdf"),
+        ("SOURCE_KML", source_kml_file, "application/vnd.google-earth.kml+xml"),
+        ("SHAPEFILE", shapefile_file, "application/octet-stream"),
     ]
-    for doc_type, upload_list in pdf_files_groups:
+    for doc_type, upload_list, default_ct in upload_files_groups:
         for idx, upload in enumerate(upload_list):
             if upload and upload.filename:
-                pdf_bytes = await upload.read()
-                if pdf_bytes:
+                file_bytes = await upload.read()
+                if file_bytes:
+                    ct = upload.content_type or default_ct
                     key = f"documents/{plot_id}/{doc_type}_{idx}_{upload.filename}"
-                    upload_file(key, pdf_bytes, content_type="application/pdf")
+                    upload_file(key, file_bytes, content_type=ct)
                     doc = Document(
                         id=uuid.uuid4(),
                         plot_id=plot_id,
@@ -291,6 +304,171 @@ async def create_plot(
     db.commit()
     db.refresh(plot)
     return _plot_to_detail(plot)
+
+
+@router.put("/{plot_id}", response_model=PlotDetail)
+async def update_plot(
+    plot_id: UUID,
+    land_id: str = Form(...),
+    land_name: str = Form(...),
+    landmark: Optional[str] = Form(None),
+    plot_type: Optional[str] = Form(None),
+    address: Optional[str] = Form(None),
+    year_of_registration: Optional[str] = Form(None),
+    owner_name: Optional[str] = Form(None),
+    lat: Optional[float] = Form(None),
+    lon: Optional[float] = Form(None),
+    area_value: Optional[float] = Form(None),
+    area_unit: Optional[str] = Form(None),
+    kml_file: Optional[UploadFile] = File(None),
+    fmb_file: List[UploadFile] = File(default=[]),
+    patta_file: List[UploadFile] = File(default=[]),
+    deed_file: List[UploadFile] = File(default=[]),
+    parent_document_file: List[UploadFile] = File(default=[]),
+    ec_details_file: List[UploadFile] = File(default=[]),
+    building_plan_file: List[UploadFile] = File(default=[]),
+    plan_approval_letter_file: List[UploadFile] = File(default=[]),
+    building_permit_letter_file: List[UploadFile] = File(default=[]),
+    property_tax_file: List[UploadFile] = File(default=[]),
+    aerial_photo_file: List[UploadFile] = File(default=[]),
+    dispute_details_file: List[UploadFile] = File(default=[]),
+    adangal_file: List[UploadFile] = File(default=[]),
+    a_register_file: List[UploadFile] = File(default=[]),
+    approved_plan_file: List[UploadFile] = File(default=[]),
+    source_kml_file: List[UploadFile] = File(default=[]),
+    shapefile_file: List[UploadFile] = File(default=[]),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin),
+):
+    """Update an existing land parcel and upload additional documents. Admin only."""
+    plot = db.query(Plot).filter(Plot.id == plot_id).first()
+    if not plot:
+        raise HTTPException(status_code=404, detail="Plot not found")
+
+    # Check land_id uniqueness within district (excluding this plot)
+    existing = db.query(Plot).filter(
+        Plot.geo_node_id == plot.geo_node_id,
+        Plot.plot_number == land_id,
+        Plot.id != plot_id,
+        Plot.status == "ACTIVE"
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"LandID '{land_id}' already exists in this district."
+        )
+
+    # If new KML is uploaded, parse and update geometry
+    if kml_file and kml_file.filename:
+        kml_bytes = await kml_file.read()
+        if kml_bytes:
+            kml_key = f"kml/{plot_id}.kml"
+            upload_file(kml_key, kml_bytes, content_type="application/vnd.google-earth.kml+xml")
+            try:
+                parsed = extract_polygon_from_kml(kml_bytes)
+                boundary_wkt = parsed["wkt"]
+                centroid_lat = lat if lat is not None else parsed["centroid_lat"]
+                centroid_lon = lon if lon is not None else parsed["centroid_lon"]
+
+                from shapely import wkt as swkt
+                from shapely.geometry import Point
+                poly = swkt.loads(boundary_wkt)
+                plot.boundary = from_shape(poly, srid=4326)
+                centroid_pt = Point(centroid_lon, centroid_lat)
+                plot.centroid = from_shape(centroid_pt, srid=4326)
+                plot.lat = centroid_lat
+                plot.lon = centroid_lon
+                plot.source_file_key = kml_key
+
+                if area_value is None:
+                    from sqlalchemy import text
+                    query = text("SELECT ST_Area(ST_GeomFromText(:wkt, 4326)::geography)")
+                    result = db.execute(query, {"wkt": boundary_wkt}).scalar()
+                    plot.area_value = float(result) if result else 0.0
+                    plot.area_unit = "sqm"
+
+                loc_name = await _reverse_geocode(centroid_lat, centroid_lon)
+                if loc_name:
+                    plot.location_name = loc_name
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Failed to parse KML: {e}")
+
+    # Update basic fields
+    plot.plot_number = land_id.strip()
+    plot.property_name = land_name.strip()
+    plot.landmark = landmark.strip() if landmark else None
+    plot.plot_type = plot_type.strip() if plot_type else None
+    plot.address = address.strip() if address else None
+    plot.year_of_registration = year_of_registration.strip() if year_of_registration else None
+    plot.owner_name = owner_name.strip() if owner_name else None
+    if area_value is not None:
+        plot.area_value = area_value
+    if area_unit:
+        plot.area_unit = area_unit
+    if lat is not None and not (kml_file and kml_file.filename):
+        plot.lat = lat
+    if lon is not None and not (kml_file and kml_file.filename):
+        plot.lon = lon
+
+    # Upload any new documents attached
+    upload_files_groups = [
+        ("FMB", fmb_file, "application/pdf"),
+        ("PATTA", patta_file, "application/pdf"),
+        ("DEED", deed_file, "application/pdf"),
+        ("PARENT_DOCUMENT", parent_document_file, "application/pdf"),
+        ("EC_DETAILS", ec_details_file, "application/pdf"),
+        ("BUILDING_PLAN", building_plan_file, "application/pdf"),
+        ("PLAN_APPROVAL", plan_approval_letter_file, "application/pdf"),
+        ("BUILDING_PERMIT", building_permit_letter_file, "application/pdf"),
+        ("PROPERTY_TAX", property_tax_file, "application/pdf"),
+        ("AERIAL_PHOTO", aerial_photo_file, "application/pdf"),
+        ("DISPUTE_DETAILS", dispute_details_file, "application/pdf"),
+        ("ADANGAL", adangal_file, "application/pdf"),
+        ("A_REGISTER", a_register_file, "application/pdf"),
+        ("APPROVED_PLAN", approved_plan_file, "application/pdf"),
+        ("SOURCE_KML", source_kml_file, "application/vnd.google-earth.kml+xml"),
+        ("SHAPEFILE", shapefile_file, "application/octet-stream"),
+    ]
+    for doc_type, upload_list, default_ct in upload_files_groups:
+        for idx, upload in enumerate(upload_list):
+            if upload and upload.filename:
+                file_bytes = await upload.read()
+                if file_bytes:
+                    ct = upload.content_type or default_ct
+                    key = f"documents/{plot_id}/{doc_type}_{idx}_{upload.filename}"
+                    upload_file(key, file_bytes, content_type=ct)
+                    doc = Document(
+                        id=uuid.uuid4(),
+                        plot_id=plot_id,
+                        doc_type=doc_type,
+                        storage_key=key,
+                        uploaded_by=current_user.id,
+                    )
+                    db.add(doc)
+
+    db.commit()
+    db.refresh(plot)
+    return _plot_to_detail(plot)
+
+
+@router.get("/{plot_id}/kml-url")
+def get_plot_kml_url(plot_id: UUID, db: Session = Depends(get_db)):
+    """Get a presigned download URL for the plot's KML file.
+    If a custom SOURCE_KML document was uploaded, returns that.
+    Otherwise returns the original KML uploaded for map display."""
+    plot = db.query(Plot).filter(Plot.id == plot_id).first()
+    if not plot:
+        raise HTTPException(status_code=404, detail="Plot not found")
+
+    # Check for custom SOURCE_KML document
+    custom_kml = db.query(Document).filter(
+        Document.plot_id == plot_id,
+        Document.doc_type == "SOURCE_KML"
+    ).order_by(Document.uploaded_at.desc()).first()
+
+    storage_key = custom_kml.storage_key if custom_kml else (plot.source_file_key or f"kml/{plot_id}.kml")
+    url = get_presigned_url(storage_key, expires_seconds=3600)
+    return {"url": url, "storage_key": storage_key, "is_custom": custom_kml is not None}
 
 
 @router.delete("/{plot_id}", status_code=status.HTTP_204_NO_CONTENT)

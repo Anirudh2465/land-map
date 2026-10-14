@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { getPlots, getPlot } from '../api/plots'
+import { getPlots, getPlot, getPlotKmlUrl } from '../api/plots'
 import { getDocumentUrl } from '../api/documents'
 import { getNodeByName, getCountries, getChildren, getNode } from '../api/geo'
 import { geocodeAddress, getRoute, getNearbyPlaces } from '../api/routing'
@@ -40,7 +40,28 @@ function convertAreaValue(val, fromUnit, toUnit) {
 const DOC_CATEGORIES = {
   land_documents: ['DEED', 'PARENT_DOCUMENT', 'FMB', 'PATTA', 'EC_DETAILS'],
   buildup_details: ['BUILDING_PLAN', 'PLAN_APPROVAL', 'BUILDING_PERMIT'],
-  others: ['PROPERTY_TAX', 'AERIAL_PHOTO', 'DISPUTE_DETAILS']
+  others: ['PROPERTY_TAX', 'AERIAL_PHOTO', 'DISPUTE_DETAILS', 'ADANGAL', 'A_REGISTER', 'APPROVED_PLAN'],
+  source_files: ['SOURCE_KML', 'KML', 'SHAPEFILE']
+}
+
+const DOC_TITLES = {
+  DEED: 'Deed Document',
+  PARENT_DOCUMENT: 'Parent Document',
+  FMB: 'FMB Sketch',
+  PATTA: 'Patta / Chitta Details',
+  EC_DETAILS: 'EC Details',
+  BUILDING_PLAN: 'Building Plan',
+  PLAN_APPROVAL: 'Plan Approval Letter',
+  BUILDING_PERMIT: 'Building Permit Letter',
+  PROPERTY_TAX: 'Property Tax',
+  AERIAL_PHOTO: 'Aerial / Field Photos',
+  DISPUTE_DETAILS: 'Dispute Details',
+  ADANGAL: 'Adangal',
+  A_REGISTER: 'A-Register',
+  APPROVED_PLAN: 'Approved Industry / Residential Plan',
+  SOURCE_KML: 'KML File',
+  KML: 'KML File',
+  SHAPEFILE: 'Shapefile'
 }
 
 // Coordinates and view constants
@@ -281,7 +302,10 @@ export default function MapPage() {
     setExpandedFolders(prev => ({ ...prev, [docType]: !prev[docType] }))
   }
 
-  const getOriginalFilename = (storageKey, docType) => {
+  const getOriginalFilename = (storageKey, docType, isDefaultKml = false) => {
+    if (isDefaultKml) {
+      return `${selectedPlot?.plot_number || 'parcel'}_boundary.kml`
+    }
     if (!storageKey) return 'Document';
     const parts = storageKey.split('/');
     const fileWithPrefix = parts[parts.length - 1];
@@ -1367,6 +1391,11 @@ export default function MapPage() {
 
   async function handleDownloadPdf(doc) {
     try {
+      if (doc.isDefaultKml || doc.doc_type === 'SOURCE_KML' || doc.doc_type === 'KML') {
+        const { url } = await getPlotKmlUrl(selectedPlot.id)
+        window.open(url, '_blank', 'noopener,noreferrer')
+        return
+      }
       const { url } = await getDocumentUrl(doc.id)
       window.open(url, '_blank', 'noopener,noreferrer')
     } catch {
@@ -1956,7 +1985,18 @@ export default function MapPage() {
                 </div>
 
                 {(() => {
-                  const plotDocs = selectedPlot.documents || []
+                  const plotDocs = [...(selectedPlot.documents || [])]
+
+                  // KML File must always be available to download.
+                  const hasKml = plotDocs.some(d => d.doc_type === 'SOURCE_KML' || d.doc_type === 'KML')
+                  if (!hasKml) {
+                    plotDocs.push({
+                      id: `default-kml-${selectedPlot.id}`,
+                      doc_type: 'SOURCE_KML',
+                      storage_key: selectedPlot.source_file_key || `kml/${selectedPlot.id}.kml`,
+                      isDefaultKml: true
+                    })
+                  }
 
                   if (plotDocs.length === 0) {
                     return (
@@ -1975,10 +2015,11 @@ export default function MapPage() {
                   return (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                       {Object.entries(docsByType).map(([docType, docs]) => {
-                        const title = docType.replace(/_/g, ' ')
+                        const title = DOC_TITLES[docType] || docType.replace(/_/g, ' ')
                         if (docs.length === 1) {
                           const doc = docs[0]
-                          const filename = getOriginalFilename(doc.storage_key, docType)
+                          const filename = getOriginalFilename(doc.storage_key, docType, doc.isDefaultKml)
+                          const isNonPdf = docType === 'SOURCE_KML' || docType === 'KML' || docType === 'SHAPEFILE' || (doc.storage_key && !doc.storage_key.toLowerCase().endsWith('.pdf'))
                           return (
                             <div key={doc.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.75rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
                               <span style={{ fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.45rem', color: '#0f172a' }}>
@@ -1986,7 +2027,9 @@ export default function MapPage() {
                                 <span style={{ textTransform: 'capitalize' }}>{title}</span>
                               </span>
                               <div style={{ display: 'flex', gap: '0.35rem' }}>
-                                <button className="btn btn-outline btn-sm" onClick={() => handlePreviewPdf(doc)} disabled={pdfLoading} title={`Preview ${filename}`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px' }}><Eye size={13} /></button>
+                                {!isNonPdf && (
+                                  <button className="btn btn-outline btn-sm" onClick={() => handlePreviewPdf(doc)} disabled={pdfLoading} title={`Preview ${filename}`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px' }}><Eye size={13} /></button>
+                                )}
                                 <button className="btn btn-primary btn-sm" onClick={() => handleDownloadPdf(doc)} title={`Download ${filename}`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px' }}><Download size={13} /></button>
                               </div>
                             </div>
@@ -2008,7 +2051,8 @@ export default function MapPage() {
                               {isExpanded && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.5rem 0.75rem', paddingLeft: '1.75rem', borderTop: '1px solid #e2e8f0', background: '#fff' }}>
                                   {docs.map((doc, idx) => {
-                                    const filename = getOriginalFilename(doc.storage_key, docType)
+                                    const filename = getOriginalFilename(doc.storage_key, docType, doc.isDefaultKml)
+                                    const isNonPdf = docType === 'SOURCE_KML' || docType === 'KML' || docType === 'SHAPEFILE' || (doc.storage_key && !doc.storage_key.toLowerCase().endsWith('.pdf'))
                                     return (
                                       <div key={doc.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.25rem 0' }}>
                                         <span style={{ fontSize: '0.75rem', color: 'var(--color-text)', display: 'flex', alignItems: 'center', gap: '0.4rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '60%' }} title={filename}>
@@ -2016,7 +2060,9 @@ export default function MapPage() {
                                           {filename}
                                         </span>
                                         <div style={{ display: 'flex', gap: '0.25rem', flexShrink: 0 }}>
-                                          <button className="btn btn-outline btn-sm" onClick={() => handlePreviewPdf(doc)} disabled={pdfLoading} title="Preview Document" style={{ padding: '0.15rem 0.35rem', fontSize: '0.7rem', borderRadius: '4px' }}><Eye size={12} /></button>
+                                          {!isNonPdf && (
+                                            <button className="btn btn-outline btn-sm" onClick={() => handlePreviewPdf(doc)} disabled={pdfLoading} title="Preview Document" style={{ padding: '0.15rem 0.35rem', fontSize: '0.7rem', borderRadius: '4px' }}><Eye size={12} /></button>
+                                          )}
                                           <button className="btn btn-primary btn-sm" onClick={() => handleDownloadPdf(doc)} title="Download Document" style={{ padding: '0.15rem 0.35rem', fontSize: '0.7rem', borderRadius: '4px' }}><Download size={12} /></button>
                                         </div>
                                       </div>

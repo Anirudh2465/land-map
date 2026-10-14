@@ -9,10 +9,37 @@
  */
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getPlots, createPlot, deletePlot, extractKml } from '../api/plots'
+import { getPlots, getPlot, createPlot, updatePlot, deletePlot, extractKml } from '../api/plots'
+import { deleteDocument } from '../api/documents'
 import { useAuth } from '../context/AuthContext'
 import Header from '../components/Header'
-import { Map, Info, FileText, Upload, Check, X, Pencil, RefreshCw } from 'lucide-react'
+import { Map, Info, FileText, Upload, Check, X, Pencil, RefreshCw, Trash2 } from 'lucide-react'
+
+const DOC_CATEGORIES = {
+  land_documents: ['DEED', 'PARENT_DOCUMENT', 'FMB', 'PATTA', 'EC_DETAILS'],
+  buildup_details: ['BUILDING_PLAN', 'PLAN_APPROVAL', 'BUILDING_PERMIT'],
+  others: ['PROPERTY_TAX', 'AERIAL_PHOTO', 'DISPUTE_DETAILS', 'ADANGAL', 'A_REGISTER', 'APPROVED_PLAN'],
+  source_files: ['SOURCE_KML', 'SHAPEFILE']
+}
+
+const DOC_TITLES = {
+  DEED: 'Deed Document',
+  PARENT_DOCUMENT: 'Parent Document',
+  FMB: 'FMB Sketch',
+  PATTA: 'Patta / Chitta Details',
+  EC_DETAILS: 'EC Details',
+  BUILDING_PLAN: 'Building Plan',
+  PLAN_APPROVAL: 'Plan Approval Letter',
+  BUILDING_PERMIT: 'Building Permit Letter',
+  PROPERTY_TAX: 'Property Tax',
+  AERIAL_PHOTO: 'Aerial / Field Photos',
+  DISPUTE_DETAILS: 'Dispute Details',
+  ADANGAL: 'Adangal',
+  A_REGISTER: 'A-Register',
+  APPROVED_PLAN: 'Approved Industry / Residential Plan',
+  SOURCE_KML: 'Source KML File',
+  SHAPEFILE: 'Shapefile'
+}
 
 const AREA_UNITS = ['sqm', 'sqft', 'acres', 'hectares']
 
@@ -82,6 +109,10 @@ export default function ManagePage() {
   const [extractingKml, setExtractingKml] = useState(false)
   const [docSubcategory, setDocSubcategory] = useState('land_documents')
 
+  const [editingPlotId, setEditingPlotId] = useState(null)
+  const [existingDocs, setExistingDocs] = useState([])
+  const [deletingDocId, setDeletingDocId] = useState(null)
+
   const [kmlFile, setKmlFile] = useState(null)
   const [fmbFile, setFmbFile] = useState(null)
   const [pattaFile, setPattaFile] = useState(null)
@@ -94,6 +125,11 @@ export default function ManagePage() {
   const [propertyTaxFile, setPropertyTaxFile] = useState(null)
   const [aerialPhotoFile, setAerialPhotoFile] = useState(null)
   const [disputeDetailsFile, setDisputeDetailsFile] = useState(null)
+  const [adangalFile, setAdangalFile] = useState(null)
+  const [aRegisterFile, setARegisterFile] = useState(null)
+  const [approvedPlanFile, setApprovedPlanFile] = useState(null)
+  const [sourceKmlFile, setSourceKmlFile] = useState(null)
+  const [shapefileFile, setShapefileFile] = useState(null)
 
   // Redirect if not admin
   useEffect(() => {
@@ -149,6 +185,9 @@ export default function ManagePage() {
   }
 
   function resetForm() {
+    setEditingPlotId(null)
+    setExistingDocs([])
+    setDeletingDocId(null)
     setForm({ land_id: '', land_name: '', landmark: '', plot_type: '', address: '', year_of_registration: '', owner_name: '' })
     setKmlFile(null)
     setSpatialData({ lat: '', lon: '', area: '', unit: 'sqm' })
@@ -165,16 +204,66 @@ export default function ManagePage() {
     setPropertyTaxFile(null)
     setAerialPhotoFile(null)
     setDisputeDetailsFile(null)
+    setAdangalFile(null)
+    setARegisterFile(null)
+    setApprovedPlanFile(null)
+    setSourceKmlFile(null)
+    setShapefileFile(null)
     setFormError('')
     setActiveTab('details')
     setDocSubcategory('land_documents')
+  }
+
+  async function handleEditPlot(plot) {
+    resetForm()
+    setEditingPlotId(plot.id)
+    setForm({
+      land_id: plot.plot_number || '',
+      land_name: plot.property_name || '',
+      landmark: plot.landmark || '',
+      plot_type: plot.plot_type || '',
+      address: plot.address || '',
+      year_of_registration: plot.year_of_registration || '',
+      owner_name: plot.owner_name || ''
+    })
+    setSpatialData({
+      lat: plot.lat !== undefined && plot.lat !== null ? plot.lat.toString() : '',
+      lon: plot.lon !== undefined && plot.lon !== null ? plot.lon.toString() : '',
+      area: plot.area_value !== undefined && plot.area_value !== null ? plot.area_value.toString() : '',
+      unit: plot.area_unit || 'sqm'
+    })
+    setExistingDocs(plot.documents || [])
+    setShowForm(true)
+
+    try {
+      const fullPlot = await getPlot(plot.id)
+      if (fullPlot && fullPlot.documents) {
+        setExistingDocs(fullPlot.documents)
+      }
+    } catch (err) {
+      console.error('Failed to load fresh plot documents:', err)
+    }
+  }
+
+  async function handleDeleteExistingDoc(docId) {
+    if (!window.confirm('Are you sure you want to delete this document?')) return
+    try {
+      setDeletingDocId(docId)
+      await deleteDocument(docId)
+      setExistingDocs(prev => prev.filter(d => d.id !== docId))
+      loadPlots()
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to delete document.')
+    } finally {
+      setDeletingDocId(null)
+    }
   }
 
   async function handleSubmit(e) {
     e.preventDefault()
     setFormError('')
 
-    if (!kmlFile) {
+    if (!editingPlotId && !kmlFile) {
       setFormError('KML file is required.')
       return
     }
@@ -182,7 +271,9 @@ export default function ManagePage() {
     setSubmitting(true)
     try {
       const fd = new FormData()
-      fd.append('district_id', districtId)
+      if (!editingPlotId) {
+        fd.append('district_id', districtId)
+      }
       fd.append('land_id', form.land_id.trim())
       fd.append('land_name', form.land_name.trim())
       if (form.landmark.trim()) fd.append('landmark', form.landmark.trim())
@@ -196,7 +287,7 @@ export default function ManagePage() {
       if (spatialData.area) fd.append('area_value', spatialData.area)
       if (spatialData.unit) fd.append('area_unit', spatialData.unit)
 
-      fd.append('kml_file', kmlFile)
+      if (kmlFile) fd.append('kml_file', kmlFile)
       if (fmbFile) fmbFile.forEach(f => fd.append('fmb_file', f))
       if (pattaFile) pattaFile.forEach(f => fd.append('patta_file', f))
       if (deedFile) deedFile.forEach(f => fd.append('deed_file', f))
@@ -208,18 +299,32 @@ export default function ManagePage() {
       if (propertyTaxFile) propertyTaxFile.forEach(f => fd.append('property_tax_file', f))
       if (aerialPhotoFile) aerialPhotoFile.forEach(f => fd.append('aerial_photo_file', f))
       if (disputeDetailsFile) disputeDetailsFile.forEach(f => fd.append('dispute_details_file', f))
+      if (adangalFile) adangalFile.forEach(f => fd.append('adangal_file', f))
+      if (aRegisterFile) aRegisterFile.forEach(f => fd.append('a_register_file', f))
+      if (approvedPlanFile) approvedPlanFile.forEach(f => fd.append('approved_plan_file', f))
+      if (sourceKmlFile) sourceKmlFile.forEach(f => fd.append('source_kml_file', f))
+      if (shapefileFile) shapefileFile.forEach(f => fd.append('shapefile_file', f))
 
       setUploadProgress(0)
-      await createPlot(fd, (progressEvent) => {
-        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-        setUploadProgress(percentCompleted);
-      })
+      const onProgress = (progressEvent) => {
+        if (progressEvent.total) {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+          setUploadProgress(percentCompleted)
+        }
+      }
+
+      if (editingPlotId) {
+        await updatePlot(editingPlotId, fd, onProgress)
+      } else {
+        await createPlot(fd, onProgress)
+      }
+
       resetForm()
       setShowForm(false)
       setUploadProgress(0)
       loadPlots()
     } catch (err) {
-      setFormError(err.response?.data?.detail || 'Failed to create parcel.')
+      setFormError(err.response?.data?.detail || (editingPlotId ? 'Failed to update parcel.' : 'Failed to create parcel.'))
       setUploadProgress(0)
     } finally {
       setSubmitting(false)
@@ -391,13 +496,22 @@ export default function ManagePage() {
                         : <span className="badge badge-gray">None</span>}
                     </td>
                     <td style={{ padding: '0.9rem 1.25rem', textAlign: 'right' }}>
-                      <button
-                        className="btn btn-danger btn-sm"
-                        style={{ fontWeight: '600', borderRadius: '6px' }}
-                        onClick={() => setDeleteConfirm(plot.id)}
-                      >
-                        Delete
-                      </button>
+                      <div style={{ display: 'inline-flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                        <button
+                          className="btn btn-outline btn-sm"
+                          style={{ fontWeight: '600', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+                          onClick={() => handleEditPlot(plot)}
+                        >
+                          <Pencil size={13} /> Edit
+                        </button>
+                        <button
+                          className="btn btn-danger btn-sm"
+                          style={{ fontWeight: '600', borderRadius: '6px' }}
+                          onClick={() => setDeleteConfirm(plot.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -411,7 +525,7 @@ export default function ManagePage() {
           <div className="modal-overlay" onClick={() => setShowForm(false)}>
             <div className="modal modal-large" onClick={e => e.stopPropagation()}>
               <div className="modal-header">
-                <span className="modal-title">Add New Parcel</span>
+                <span className="modal-title">{editingPlotId ? `Edit Parcel — ${form.land_id || 'Parcel'}` : 'Add New Parcel'}</span>
                 <button className="btn-outline" style={{ border: 'none', padding: '0.2rem 0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setShowForm(false)}>
                   <X size={20} />
                 </button>
@@ -467,8 +581,13 @@ export default function ManagePage() {
                   {activeTab === 'spatial' && (
                     <div className="tab-content">
                       <div className="doc-section">
+                        {editingPlotId && (
+                          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '0.65rem 0.85rem', marginBottom: '0.85rem', fontSize: '0.825rem', color: '#166534' }}>
+                            ℹ️ <strong>Current Boundary Active:</strong> Upload a new KML/KMZ only if you wish to replace the existing spatial boundary polygon.
+                          </div>
+                        )}
                         <label className="form-label" style={{ fontWeight: '700', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                          <Upload size={16} /> Upload KML File *
+                          <Upload size={16} /> Upload KML File {editingPlotId ? '(Optional replacement)' : '*'}
                         </label>
                         <input type="file" accept=".kml,.kmz" onChange={e => processKmlFile(e.target.files[0])} style={{ fontSize: '0.9rem', width: '100%' }} />
                         {kmlFile && (
@@ -586,10 +705,11 @@ export default function ManagePage() {
                           <option value="land_documents">Land Documents</option>
                           <option value="buildup_details">Build-up Details</option>
                           <option value="others">Others</option>
+                          <option value="source_files">Source Files</option>
                         </select>
                       </div>
 
-                      {/* Selected Subcategory Document Upload Fields (Stacked One Below Another in Full Width) */}
+                      {/* Selected Subcategory Document Upload Fields */}
                       <div className="doc-section">
                         {docSubcategory === 'land_documents' && (
                           <div>
@@ -622,9 +742,67 @@ export default function ManagePage() {
                               <FileField label="Property Tax" accept=".pdf" onChange={setPropertyTaxFile} files={propertyTaxFile} />
                               <FileField label="Aerial/Field Photos" accept=".pdf" onChange={setAerialPhotoFile} files={aerialPhotoFile} />
                               <FileField label="Dispute Details" accept=".pdf" onChange={setDisputeDetailsFile} files={disputeDetailsFile} />
+                              <FileField label="Adangal" accept=".pdf" onChange={setAdangalFile} files={adangalFile} />
+                              <FileField label="A-Register" accept=".pdf" onChange={setARegisterFile} files={aRegisterFile} />
+                              <FileField label="Approved Industry / Residential Plan" accept=".pdf" onChange={setApprovedPlanFile} files={approvedPlanFile} />
                             </div>
                           </div>
                         )}
+
+                        {docSubcategory === 'source_files' && (
+                          <div>
+                            <h4 className="doc-section-title">Source Files</h4>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                              <FileField label="KML File" accept=".kml,.kmz" onChange={setSourceKmlFile} files={sourceKmlFile} />
+                              <FileField label="Shapefile (Compressed)" accept=".zip,.tar,.gz,.tar.gz,.tgz,.rar,.7z" onChange={setShapefileFile} files={shapefileFile} />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* If editing, show existing documents for this category */}
+                        {editingPlotId && (() => {
+                          const catDocs = existingDocs.filter(d => DOC_CATEGORIES[docSubcategory]?.includes(d.doc_type))
+                          if (catDocs.length === 0) return null
+                          return (
+                            <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid #e2e8f0' }}>
+                              <label className="form-label" style={{ fontWeight: '700', fontSize: '0.8rem', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem', display: 'block' }}>
+                                Currently Uploaded ({catDocs.length})
+                              </label>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                                {catDocs.map(doc => {
+                                  const parts = doc.storage_key.split('/')
+                                  const rawName = parts[parts.length - 1]
+                                  const cleanName = rawName.replace(new RegExp(`^${doc.doc_type}_\\d+_`), '')
+                                  return (
+                                    <div key={doc.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.45rem 0.75rem', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                                        <FileText size={15} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
+                                        <div style={{ minWidth: 0 }}>
+                                          <div style={{ fontSize: '0.825rem', fontWeight: '600', color: '#1e293b' }}>
+                                            {DOC_TITLES[doc.doc_type] || doc.doc_type}
+                                          </div>
+                                          <div style={{ fontSize: '0.75rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={cleanName}>
+                                            {cleanName}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        className="btn btn-sm btn-outline"
+                                        style={{ color: '#dc2626', borderColor: '#fca5a5', padding: '0.2rem 0.45rem', fontSize: '0.725rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', flexShrink: 0 }}
+                                        onClick={() => handleDeleteExistingDoc(doc.id)}
+                                        disabled={deletingDocId === doc.id}
+                                        title="Delete document"
+                                      >
+                                        <Trash2 size={12} /> {deletingDocId === doc.id ? 'Deleting...' : 'Delete'}
+                                      </button>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        })()}
                       </div>
                     </div>
                   )}
@@ -641,8 +819,12 @@ export default function ManagePage() {
                       <span style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text)' }}>{uploadProgress}%</span>
                     </div>
                   ) : (
-                    <button type="submit" className="btn btn-primary" disabled={!form.land_id || !form.land_name || !kmlFile}>
-                      Create Parcel
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={editingPlotId ? (!form.land_id || !form.land_name) : (!form.land_id || !form.land_name || !kmlFile)}
+                    >
+                      {editingPlotId ? 'Save Changes' : 'Create Parcel'}
                     </button>
                   )}
                 </div>
