@@ -158,6 +158,7 @@ export default function ManagePage() {
     setKmlFile(file)
     if (!file) return
     setExtractingKml(true)
+    setFormError('')
     try {
       const data = await extractKml(file)
       const currentUnit = spatialData.unit || 'sqm'
@@ -170,6 +171,8 @@ export default function ManagePage() {
       })
     } catch (err) {
       console.error('Failed to extract KML spatial data:', err)
+      const errMsg = err.response?.data?.detail || 'Failed to extract KML coordinates and boundaries.'
+      setFormError(errMsg)
     } finally {
       setExtractingKml(false)
     }
