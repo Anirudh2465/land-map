@@ -53,8 +53,8 @@ class Plot(Base):
     lon = Column(Float, nullable=True)
     location_name = Column(String, nullable=True)  # Nominatim reverse-geocoded address
     # Geometry — nullable to handle KML parse failures gracefully
-    boundary = Column(Geometry('POLYGON', srid=4326), nullable=True, index=True)
-    boundary_simplified = Column(Geometry('POLYGON', srid=4326), nullable=True)
+    boundary = Column(Geometry('GEOMETRY', srid=4326), nullable=True, index=True)
+    boundary_simplified = Column(Geometry('GEOMETRY', srid=4326), nullable=True)
     centroid = Column(Geometry('POINT', srid=4326), nullable=True)
     tile_cell = Column(String, index=True, nullable=True)
     source_file_type = Column(String, default="KML")
