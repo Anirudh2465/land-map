@@ -1584,6 +1584,15 @@ export default function MapPage() {
     } else if (selectedVillage === 'Madukkarai') {
       const match = (plot.plot_number || '').toUpperCase().startsWith('MAD') || (plot.landmark || '').toLowerCase().includes('madukkarai') || (plot.location_name || '').toLowerCase().includes('madukkarai')
       if (!match) return false
+    } else if (selectedVillage === 'Singanallur') {
+      const match = (plot.plot_number || '').toUpperCase().startsWith('SING') || ((plot.location_name || '') + ' ' + (plot.address || '') + ' ' + (plot.landmark || '')).toLowerCase().includes('singanallur')
+      if (!match) return false
+    } else if (selectedVillage === 'Coimbatore North') {
+      const match = (plot.plot_number || '').toUpperCase().startsWith('NORTH') || (plot.plot_number || '').toUpperCase().startsWith('CBN') || ((plot.location_name || '') + ' ' + (plot.address || '') + ' ' + (plot.landmark || '')).toLowerCase().includes('north')
+      if (!match) return false
+    } else if (selectedVillage) {
+      const loc = ((plot.location_name || '') + ' ' + (plot.address || '') + ' ' + (plot.landmark || '') + ' ' + (plot.property_name || '')).toLowerCase()
+      if (!loc.includes(selectedVillage.toLowerCase())) return false
     }
 
     if (!searchQuery.trim()) return true
@@ -2532,14 +2541,14 @@ export default function MapPage() {
                       onChange={e => setSelectedVillage(e.target.value)}
                     >
                       {(() => {
-                        const bogCount = plots.filter(p => (p.plot_number || '').toUpperCase().startsWith('BOG')).length
-                        const madCount = plots.filter(p => (p.plot_number || '').toUpperCase().startsWith('MAD')).length
+                        const bogCount = plots.filter(p => (p.plot_number || '').toUpperCase().startsWith('BOG') || ((p.location_name || '') + ' ' + (p.landmark || '')).toLowerCase().includes('bogampatti')).length
+                        const madCount = plots.filter(p => (p.plot_number || '').toUpperCase().startsWith('MAD') || ((p.location_name || '') + ' ' + (p.landmark || '')).toLowerCase().includes('madukkarai')).length
                         const singCount = plots.filter(p => (p.plot_number || '').toUpperCase().startsWith('SING') || ((p.location_name || '') + ' ' + (p.address || '')).toLowerCase().includes('singanallur')).length
                         const northCount = plots.filter(p => (p.plot_number || '').toUpperCase().startsWith('NORTH') || (p.plot_number || '').toUpperCase().startsWith('CBN') || ((p.location_name || '') + ' ' + (p.address || '')).toLowerCase().includes('north')).length
                         return (
                           <>
-                            <option value="Bogampatti">Bogampatti ({bogCount || 10} parcels)</option>
-                            <option value="Madukkarai">Madukkarai ({madCount || 1} parcel)</option>
+                            <option value="Bogampatti">Bogampatti ({bogCount} {bogCount === 1 ? 'parcel' : 'parcels'})</option>
+                            <option value="Madukkarai">Madukkarai ({madCount} {madCount === 1 ? 'parcel' : 'parcels'})</option>
                             <option value="Singanallur">Singanallur ({singCount} {singCount === 1 ? 'parcel' : 'parcels'})</option>
                             <option value="Coimbatore North">Coimbatore North ({northCount} {northCount === 1 ? 'parcel' : 'parcels'})</option>
                             {CBE_VILLAGES.filter(v => !['Bogampatti', 'Madukkarai', 'Singanallur', 'Coimbatore North'].includes(v)).map(v => (
