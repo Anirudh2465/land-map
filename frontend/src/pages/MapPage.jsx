@@ -117,6 +117,8 @@ const TN_DISTRICTS = [
 const CBE_VILLAGES = [
   'Bogampatti',
   'Madukkarai',
+  'Singanallur',
+  'Coimbatore North',
   'Annur',
   'Chettipalayam',
   'Irugur',
@@ -139,6 +141,8 @@ const CBE_VILLAGES = [
 const VILLAGE_COORDS = {
   'Bogampatti': { center: [10.8972, 77.0884], zoom: 15 },
   'Madukkarai': { center: [10.8995, 76.9445], zoom: 15 },
+  'Singanallur': { center: [11.0092, 77.0446], zoom: 15 },
+  'Coimbatore North': { center: [11.0250, 76.9500], zoom: 15 },
 }
 
 const PARCEL_STYLE = {
@@ -1028,7 +1032,6 @@ export default function MapPage() {
   async function handleSelectVillage(villageToSelect) {
     const target = villageToSelect || selectedVillage || 'Bogampatti'
     if (!VILLAGE_COORDS[target]) {
-      // Non-working options just not responsive as requested
       return
     }
     setSelectedVillage(target)
@@ -1038,7 +1041,29 @@ export default function MapPage() {
     const dest = VILLAGE_COORDS[target]
     const map = mapInstanceRef.current
     if (map) {
-      map.flyTo(dest.center, dest.zoom, { duration: 1.0, easeLinearity: 0.25 })
+      // Check if there are parcels registered for this village/area
+      const matchedPlots = plots.filter(p => {
+        const pid = (p.plot_number || '').toUpperCase()
+        const loc = ((p.location_name || '') + ' ' + (p.address || '') + ' ' + (p.property_name || '')).toLowerCase()
+        if (target === 'Bogampatti') return pid.startsWith('BOG') || loc.includes('bogampatti')
+        if (target === 'Madukkarai') return pid.startsWith('MAD') || loc.includes('madukkarai')
+        if (target === 'Singanallur') return pid.startsWith('SING') || loc.includes('singanallur')
+        if (target === 'Coimbatore North') return pid.startsWith('NORTH') || pid.startsWith('CBN') || loc.includes('north')
+        return loc.includes(target.toLowerCase())
+      })
+
+      if (matchedPlots.length > 0) {
+        const pts = matchedPlots.filter(p => p.lat != null && p.lon != null).map(p => [p.lat, p.lon])
+        if (pts.length === 1) {
+          map.flyTo(pts[0], 16, { duration: 1.0, easeLinearity: 0.25 })
+        } else if (pts.length > 1) {
+          map.flyToBounds(L.latLngBounds(pts), { padding: [80, 80], maxZoom: 16, duration: 1.0 })
+        } else {
+          map.flyTo(dest.center, dest.zoom, { duration: 1.0, easeLinearity: 0.25 })
+        }
+      } else {
+        map.flyTo(dest.center, dest.zoom, { duration: 1.0, easeLinearity: 0.25 })
+      }
     }
 
     const timer = setTimeout(() => {
@@ -2506,11 +2531,23 @@ export default function MapPage() {
                       value={selectedVillage || 'Bogampatti'}
                       onChange={e => setSelectedVillage(e.target.value)}
                     >
-                      <option value="Bogampatti">Bogampatti ({plots.filter(p => (p.plot_number || '').startsWith('BOG')).length || 10} parcels)</option>
-                      <option value="Madukkarai">Madukkarai ({plots.filter(p => (p.plot_number || '').startsWith('MAD')).length || 1} parcel)</option>
-                      {CBE_VILLAGES.filter(v => v !== 'Bogampatti' && v !== 'Madukkarai').map(v => (
-                        <option key={v} value={v}>{v}</option>
-                      ))}
+                      {(() => {
+                        const bogCount = plots.filter(p => (p.plot_number || '').toUpperCase().startsWith('BOG')).length
+                        const madCount = plots.filter(p => (p.plot_number || '').toUpperCase().startsWith('MAD')).length
+                        const singCount = plots.filter(p => (p.plot_number || '').toUpperCase().startsWith('SING') || ((p.location_name || '') + ' ' + (p.address || '')).toLowerCase().includes('singanallur')).length
+                        const northCount = plots.filter(p => (p.plot_number || '').toUpperCase().startsWith('NORTH') || (p.plot_number || '').toUpperCase().startsWith('CBN') || ((p.location_name || '') + ' ' + (p.address || '')).toLowerCase().includes('north')).length
+                        return (
+                          <>
+                            <option value="Bogampatti">Bogampatti ({bogCount || 10} parcels)</option>
+                            <option value="Madukkarai">Madukkarai ({madCount || 1} parcel)</option>
+                            <option value="Singanallur">Singanallur ({singCount} {singCount === 1 ? 'parcel' : 'parcels'})</option>
+                            <option value="Coimbatore North">Coimbatore North ({northCount} {northCount === 1 ? 'parcel' : 'parcels'})</option>
+                            {CBE_VILLAGES.filter(v => !['Bogampatti', 'Madukkarai', 'Singanallur', 'Coimbatore North'].includes(v)).map(v => (
+                              <option key={v} value={v}>{v}</option>
+                            ))}
+                          </>
+                        )
+                      })()}
                     </select>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.25rem' }}>

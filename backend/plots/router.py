@@ -10,10 +10,10 @@ from geoalchemy2.shape import from_shape, to_shape
 from shapely.geometry import mapping
 
 from database import get_db
-from models import Plot, Document, GeoNode
+from models import Plot, Document, GeoNode, DocumentExtract, AISummary, Owner, Transaction, TaxRecord
 from auth.dependencies import require_admin
 import re
-from minio_client import upload_file, get_presigned_url, get_content_type
+from minio_client import upload_file, get_presigned_url, get_content_type, delete_plot_storage
 from kml_parser import extract_polygon_from_kml
 from plots.schemas import PlotListItem, PlotDetail, DocumentOut
 
@@ -485,9 +485,31 @@ def delete_plot(
     db: Session = Depends(get_db),
     current_user=Depends(require_admin),
 ):
-    """Soft-delete a plot (sets status to DELETED). Admin only."""
+    """Delete a plot and all associated documents, database records, and Supabase storage files. Admin only."""
     plot = db.query(Plot).filter(Plot.id == plot_id).first()
     if not plot:
         raise HTTPException(status_code=404, detail="Plot not found")
-    plot.status = "DELETED"
+
+    # 1. Collect all storage keys
+    doc_keys = [d.storage_key for d in plot.documents if d.storage_key]
+    extra_keys = set(doc_keys)
+    if plot.source_file_key:
+        extra_keys.add(plot.source_file_key)
+
+    # 2. Delete all files from Supabase Storage (KML + documents folder)
+    delete_plot_storage(str(plot_id), list(extra_keys))
+
+    # 3. Clean up database relationships
+    doc_ids = [d.id for d in plot.documents]
+    if doc_ids:
+        db.query(DocumentExtract).filter(DocumentExtract.document_id.in_(doc_ids)).delete(synchronize_session=False)
+        db.query(Document).filter(Document.plot_id == plot_id).delete(synchronize_session=False)
+
+    db.query(AISummary).filter(AISummary.plot_id == plot_id).delete(synchronize_session=False)
+    db.query(Owner).filter(Owner.plot_id == plot_id).delete(synchronize_session=False)
+    db.query(Transaction).filter(Transaction.plot_id == plot_id).delete(synchronize_session=False)
+    db.query(TaxRecord).filter(TaxRecord.plot_id == plot_id).delete(synchronize_session=False)
+
+    # 4. Delete plot itself
+    db.delete(plot)
     db.commit()

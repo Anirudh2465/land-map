@@ -58,3 +58,55 @@ def get_presigned_url(object_name: str, expires_seconds: int = 3600, download_fi
     if isinstance(res, dict):
         return res.get("signedURL", res.get("signedUrl", ""))
     return str(res)
+
+def delete_file(object_name: str) -> None:
+    """Delete a single file from Supabase Storage."""
+    if not object_name:
+        return
+    client = get_supabase_client()
+    try:
+        client.storage.from_(settings.SUPABASE_STORAGE_BUCKET).remove([object_name])
+    except Exception as e:
+        print(f"Warning: Failed to delete {object_name} from Supabase storage: {e}")
+
+def delete_files(object_names: list[str]) -> None:
+    """Delete multiple files from Supabase Storage."""
+    valid_names = [o for o in object_names if o]
+    if not valid_names:
+        return
+    client = get_supabase_client()
+    try:
+        client.storage.from_(settings.SUPABASE_STORAGE_BUCKET).remove(valid_names)
+    except Exception as e:
+        print(f"Warning: Failed to delete files from Supabase storage: {e}")
+
+def delete_plot_storage(plot_id: str, extra_keys: list[str] = None) -> None:
+    """Delete all files associated with a plot from Supabase Storage (KML and documents folder)."""
+    client = get_supabase_client()
+    bucket = settings.SUPABASE_STORAGE_BUCKET
+    keys_to_delete = set()
+    
+    if extra_keys:
+        for k in extra_keys:
+            if k:
+                keys_to_delete.add(k)
+
+    keys_to_delete.add(f"kml/{plot_id}.kml")
+
+    # List any files under documents/{plot_id}/
+    try:
+        folder_items = client.storage.from_(bucket).list(f"documents/{plot_id}")
+        if folder_items and isinstance(folder_items, list):
+            for item in folder_items:
+                name = item.get("name")
+                if name:
+                    keys_to_delete.add(f"documents/{plot_id}/{name}")
+    except Exception as e:
+        print(f"Warning: Failed to list documents/{plot_id} in Supabase storage: {e}")
+
+    if keys_to_delete:
+        try:
+            client.storage.from_(bucket).remove(list(keys_to_delete))
+        except Exception as e:
+            print(f"Warning: Failed to remove plot files from Supabase storage: {e}")
+

@@ -4,8 +4,8 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from database import get_db
-from models import Document
-from minio_client import get_presigned_url
+from models import Document, DocumentExtract
+from minio_client import get_presigned_url, delete_file
 from auth.dependencies import require_admin
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -47,9 +47,16 @@ def delete_document(
     db: Session = Depends(get_db),
     current_user=Depends(require_admin),
 ):
-    """Delete a document. Admin only."""
+    """Delete a document from both the database and Supabase Storage. Admin only."""
     doc = db.query(Document).filter(Document.id == doc_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
+    
+    # 1. Delete physical file from Supabase Storage
+    if doc.storage_key:
+        delete_file(doc.storage_key)
+
+    # 2. Delete child extracts and database record
+    db.query(DocumentExtract).filter(DocumentExtract.document_id == doc_id).delete(synchronize_session=False)
     db.delete(doc)
     db.commit()
