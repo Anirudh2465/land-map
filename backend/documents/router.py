@@ -90,5 +90,5 @@ def delete_document(
 
     # 2. Delete child extracts and database record
     db.query(DocumentExtract).filter(DocumentExtract.document_id == doc_id).delete(synchronize_session=False)
-    db.delete(doc)
+    db.query(Document).filter(Document.id == doc_id).delete(synchronize_session=False)
     db.commit()

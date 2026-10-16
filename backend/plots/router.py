@@ -520,31 +520,31 @@ def delete_plot(
     db: Session = Depends(get_db),
     current_user=Depends(require_admin),
 ):
-    """Delete a plot and all associated documents, database records, and Supabase storage files. Admin only."""
+    """Delete a plot and all associated documents, database records, and storage files. Admin only."""
     plot = db.query(Plot).filter(Plot.id == plot_id).first()
     if not plot:
         raise HTTPException(status_code=404, detail="Plot not found")
 
-    # 1. Collect all storage keys
-    doc_keys = [d.storage_key for d in plot.documents if d.storage_key]
-    extra_keys = set(doc_keys)
+    # 1. Collect all storage keys without loading ORM Document instances into session identity map
+    doc_records = db.query(Document.id, Document.storage_key).filter(Document.plot_id == plot_id).all()
+    extra_keys = set(d[1] for d in doc_records if d[1])
     if plot.source_file_key:
         extra_keys.add(plot.source_file_key)
 
-    # 2. Delete all files from Supabase Storage (KML + documents folder)
+    # 2. Delete all files from storage (KML + documents folder)
     delete_plot_storage(str(plot_id), list(extra_keys))
 
-    # 3. Clean up database relationships
-    doc_ids = [d.id for d in plot.documents]
+    # 3. Clean up database relationships in correct FK order
+    doc_ids = [d[0] for d in doc_records]
     if doc_ids:
         db.query(DocumentExtract).filter(DocumentExtract.document_id.in_(doc_ids)).delete(synchronize_session=False)
-        db.query(Document).filter(Document.plot_id == plot_id).delete(synchronize_session=False)
 
+    db.query(Document).filter(Document.plot_id == plot_id).delete(synchronize_session=False)
     db.query(AISummary).filter(AISummary.plot_id == plot_id).delete(synchronize_session=False)
     db.query(Owner).filter(Owner.plot_id == plot_id).delete(synchronize_session=False)
     db.query(Transaction).filter(Transaction.plot_id == plot_id).delete(synchronize_session=False)
     db.query(TaxRecord).filter(TaxRecord.plot_id == plot_id).delete(synchronize_session=False)
 
-    # 4. Delete plot itself
-    db.delete(plot)
+    # 4. Delete plot itself directly via SQL query to avoid ORM StaleDataError
+    db.query(Plot).filter(Plot.id == plot_id).delete(synchronize_session=False)
     db.commit()

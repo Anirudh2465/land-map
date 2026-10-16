@@ -65,8 +65,8 @@ class Plot(Base):
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
 
     geo_node = relationship("GeoNode", back_populates="plots")
-    owners = relationship("Owner", back_populates="plot")
-    documents = relationship("Document", back_populates="plot")
+    owners = relationship("Owner", back_populates="plot", cascade="all, delete-orphan")
+    documents = relationship("Document", back_populates="plot", cascade="all, delete-orphan")
 
 class Owner(Base):
     __tablename__ = "owners"
@@ -91,7 +91,7 @@ class Document(Base):
     uploaded_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
 
     plot = relationship("Plot", back_populates="documents")
-    extracts = relationship("DocumentExtract", back_populates="document")
+    extracts = relationship("DocumentExtract", back_populates="document", cascade="all, delete-orphan")
 
 class DocumentExtract(Base):
     __tablename__ = "document_extracts"
