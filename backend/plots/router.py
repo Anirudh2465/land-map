@@ -4,7 +4,7 @@ import httpx
 from typing import Optional, List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status, Response
 from sqlalchemy.orm import Session
 from geoalchemy2.shape import from_shape, to_shape
 from shapely.geometry import mapping
@@ -13,7 +13,7 @@ from database import get_db
 from models import Plot, Document, GeoNode, DocumentExtract, AISummary, Owner, Transaction, TaxRecord
 from auth.dependencies import require_admin
 import re
-from minio_client import upload_file, get_presigned_url, get_content_type, delete_plot_storage
+from minio_client import upload_file, get_presigned_url, get_content_type, delete_plot_storage, download_file, is_supabase_mode
 from kml_parser import extract_polygon_from_kml
 from plots.schemas import PlotListItem, PlotDetail, DocumentOut
 
@@ -452,11 +452,42 @@ async def update_plot(
     return _plot_to_detail(plot)
 
 
+@router.get("/{plot_id}/kml-file")
+def stream_plot_kml_file(plot_id: UUID, db: Session = Depends(get_db)):
+    """Directly stream plot KML file bytes from storage. Works seamlessly in local offline mode."""
+    plot = db.query(Plot).filter(Plot.id == plot_id).first()
+    if not plot:
+        raise HTTPException(status_code=404, detail="Plot not found")
+
+    custom_kml = db.query(Document).filter(
+        Document.plot_id == plot_id,
+        Document.doc_type == "SOURCE_KML"
+    ).order_by(Document.uploaded_at.desc()).first()
+
+    if custom_kml:
+        storage_key = custom_kml.storage_key
+        raw_name = storage_key.split("/")[-1]
+        clean_filename = re.sub(r"^[A-Za-z0-9_]+?_\d+_", "", raw_name)
+    else:
+        storage_key = plot.source_file_key or f"kml/{plot_id}.kml"
+        clean_filename = f"{plot.plot_number or 'parcel'}_boundary.kml"
+
+    try:
+        data = download_file(storage_key)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read KML from storage: {e}")
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{clean_filename}"'
+    }
+    return Response(content=data, media_type="application/vnd.google-earth.kml+xml", headers=headers)
+
+
 @router.get("/{plot_id}/kml-url")
 def get_plot_kml_url(plot_id: UUID, db: Session = Depends(get_db)):
-    """Get a presigned download URL for the plot's KML file.
-    If a custom SOURCE_KML document was uploaded, returns that.
-    Otherwise returns the original KML uploaded for map display."""
+    """Get a download URL for the plot's KML file.
+    In Cloud mode (Supabase): returns presigned URL.
+    In Local mode (MinIO): returns relative streaming URL (/api/plots/{id}/kml-file)."""
     plot = db.query(Plot).filter(Plot.id == plot_id).first()
     if not plot:
         raise HTTPException(status_code=404, detail="Plot not found")
@@ -475,7 +506,11 @@ def get_plot_kml_url(plot_id: UUID, db: Session = Depends(get_db)):
         storage_key = plot.source_file_key or f"kml/{plot_id}.kml"
         clean_filename = f"{plot.plot_number or 'parcel'}_boundary.kml"
 
-    url = get_presigned_url(storage_key, expires_seconds=3600, download_filename=clean_filename)
+    if is_supabase_mode():
+        url = get_presigned_url(storage_key, expires_seconds=3600, download_filename=clean_filename)
+    else:
+        url = f"/api/plots/{plot_id}/kml-file"
+
     return {"url": url, "storage_key": storage_key, "filename": clean_filename, "is_custom": custom_kml is not None}
 
 
