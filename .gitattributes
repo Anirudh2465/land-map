@@ -1,5 +1,12 @@
 # Auto detect text files and perform LF normalization
 * text=auto
 
-# Shell scripts must always use LF
+# Shell scripts and container files must always use LF
 *.sh text eol=lf
+entrypoint.sh text eol=lf
+Dockerfile text eol=lf
+Dockerfile* text eol=lf
+
+# Windows batch scripts must use CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf

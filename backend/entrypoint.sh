@@ -28,4 +28,4 @@ python seed.py
 echo "✅ Seeding complete."
 
 echo "🚀 Starting FastAPI server..."
-exec uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+exec uvicorn main:app --host 0.0.0.0 --port 8000
