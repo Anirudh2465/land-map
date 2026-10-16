@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { getApiRootUrl } from '../api/config'
 
 const HEALTH_CHECK_TIMEOUT_MS = 12000 // 12s per ping attempt
 const RETRY_INTERVAL_MS = 15000 // retry every 15s
@@ -19,12 +20,7 @@ export default function ServerWarmupOverlay({ children }) {
   const countdownIntervalRef = useRef(null)
 
   const checkHealth = useCallback(async () => {
-    const rawApi = import.meta.env.VITE_API_URL || ''
-    // If VITE_API_URL is configured (e.g. "https://land-management-api.onrender.com/api" or "https://land-management-api.onrender.com"):
-    // Root URL is "https://land-management-api.onrender.com/"
-    const healthUrl = rawApi
-      ? rawApi.replace(/\/api\/?$/, '').replace(/\/+$/, '') + '/'
-      : '/api'
+    const healthUrl = getApiRootUrl()
 
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), HEALTH_CHECK_TIMEOUT_MS)

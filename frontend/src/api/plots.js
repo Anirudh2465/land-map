@@ -1,4 +1,5 @@
 import client from './client'
+import { resolveBackendUrl } from './config'
 
 export async function getPlots(districtId) {
   const res = await client.get('/plots', { params: { district_id: districtId } })
@@ -39,6 +40,9 @@ export async function updatePlot(plotId, formData, onUploadProgress) {
 
 export async function getPlotKmlUrl(plotId) {
   const { data } = await client.get(`/plots/${plotId}/kml-url`)
+  if (data?.url) {
+    data.url = resolveBackendUrl(data.url)
+  }
   return data
 }
 
