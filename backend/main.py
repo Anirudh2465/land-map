@@ -71,5 +71,6 @@ for r in routers:
 
 @app.get("/")
 @app.get("/api")
+@app.get("/api/")
 def read_root():
     return {"message": "LPMS API Gateway is running"}
