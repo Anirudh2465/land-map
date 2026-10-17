@@ -156,9 +156,19 @@ def main():
                 print(f"❌ KML file not found: {kml_path}")
                 continue
 
+            # Resolve target village node ID
+            target_node_id = district_id
+            v_res = client.get(f"/geo/by-name/VILLAGE/{folder.name}")
+            if v_res.status_code == 200:
+                target_node_id = v_res.json()["id"]
+            else:
+                p_res = client.get(f"/geo/resolve-path?path=India/Tamil-Nadu/{args.district}/Coimbatore-South/{folder.name}")
+                if p_res.status_code == 200 and p_res.json().get("current_node"):
+                    target_node_id = p_res.json()["current_node"]["id"]
+
             # Build form fields
             form_data = {
-                "district_id": district_id,
+                "district_id": target_node_id,
                 "land_id": str(land_id).strip(),
                 "land_name": str(land_name).strip(),
             }

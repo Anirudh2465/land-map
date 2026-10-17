@@ -154,7 +154,7 @@ export default function HomePage() {
             <div
               id="btn-update-records"
               className="glass-action-card card-update"
-              onClick={() => navigate('/navigate/manage')}
+              onClick={() => navigate('/manage')}
             >
               <div className="action-card-header-row">
                 <div className="action-card-icon-wrapper">

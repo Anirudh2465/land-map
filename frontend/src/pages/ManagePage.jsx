@@ -7,14 +7,28 @@
  *  - Add New Parcel form (modal) with KML + 3 PDF uploads
  *  - Delete parcel (soft-delete)
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getPlots, getPlot, createPlot, updatePlot, deletePlot, extractKml } from '../api/plots'
-import { getChildren, createVillage, renameVillage, deleteVillage, getNode } from '../api/geo'
+import { getChildren, createVillage, renameVillage, deleteVillage, getNode, resolveGeoPath, getCountries } from '../api/geo'
 import { deleteDocument } from '../api/documents'
 import { useAuth } from '../context/AuthContext'
 import Header from '../components/Header'
 import { Map, Info, FileText, Upload, Check, X, Pencil, RefreshCw, Trash2, Plus, ArrowLeft, ChevronRight } from 'lucide-react'
+
+function toSlug(name) {
+  if (!name) return ''
+  return encodeURIComponent(name.trim().replace(/\s+/g, '-'))
+}
+
+function fromSlug(slug) {
+  if (!slug) return ''
+  return decodeURIComponent(slug).replace(/[-_]/g, ' ')
+}
+
+function isUuid(str) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str)
+}
 
 const DOC_CATEGORIES = {
   land_documents: ['DEED', 'PARENT_DOCUMENT', 'FMB', 'PATTA', 'EC_DETAILS', 'ADANGAL', 'A_REGISTER'],
@@ -77,16 +91,40 @@ function FileField({ label, name, accept, onChange, files }) {
 }
 
 export default function ManagePage() {
-  const { districtId: talukId } = useParams()  // receives talukId (URL param kept as districtId for compat)
+  const params = useParams()
+  const splat = params['*'] || ''
+  const segments = useMemo(() => splat.split('/').filter(Boolean), [splat])
+
   const navigate = useNavigate()
   const { user } = useAuth()
 
-  // ── Village layer state ────────────────────────────────────────────────
-  const [talukNode, setTalukNode] = useState(null)
+  // ── Step & Hierarchy state ─────────────────────────────────────────────
+  // 0: Region, 1: State, 2: District, 3: Taluk, 4: Village Card, 5: Village Parcels, 10: Overseas Country, 11: Overseas Parcels
+  const [activeStep, setActiveStep] = useState(0)
+  const [chain, setChain] = useState([])
+  const [loadingStep, setLoadingStep] = useState(false)
+
+  const [countries, setCountries] = useState([])
+  const [states, setStates] = useState([])
+  const [districts, setDistricts] = useState([])
+  const [taluks, setTaluks] = useState([])
   const [villages, setVillages] = useState([])
-  const [selectedVillage, setSelectedVillage] = useState(null)  // null = showing village selection card
+
+  const [selectedStateId, setSelectedStateId] = useState('')
+  const [selectedDistrictId, setSelectedDistrictId] = useState('')
+  const [selectedTalukId, setSelectedTalukId] = useState('')
   const [selectedVillageChoiceId, setSelectedVillageChoiceId] = useState('')
-  const [loadingVillages, setLoadingVillages] = useState(true)
+  const [selectedOverseasId, setSelectedOverseasId] = useState('')
+
+  // Resolved Nodes
+  const countryNode = chain.find(c => c.level === 'COUNTRY') || null
+  const stateNode = chain.find(c => c.level === 'STATE') || null
+  const districtNode = chain.find(c => c.level === 'DISTRICT') || null
+  const talukNode = chain.find(c => c.level === 'TALUK') || null
+  const villageNode = chain.find(c => c.level === 'VILLAGE') || null
+  const selectedVillage = villageNode || (activeStep === 11 ? countryNode : null)
+
+  // ── Village layer state ────────────────────────────────────────────────
   const [newVillageName, setNewVillageName] = useState('')
   const [showAddVillage, setShowAddVillage] = useState(false)
   const [addVillageError, setAddVillageError] = useState('')
@@ -99,7 +137,7 @@ export default function ManagePage() {
   const [deletingVillage, setDeletingVillage] = useState(false)
 
   const [plots, setPlots] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -157,39 +195,200 @@ export default function ManagePage() {
     }
   }, [user, navigate])
 
-  // Load node info (village or taluk)
-  useEffect(() => {
-    if (!talukId) return
-    setLoadingVillages(true)
-    getNode(talukId).then(async (node) => {
-      if (node.level === 'VILLAGE') {
-        setSelectedVillage(node)
-        if (node.parent_id) {
-          const parent = await getNode(node.parent_id).catch(() => null)
-          setTalukNode(parent)
-        }
-      } else if (node.level === 'TALUK') {
-        setTalukNode(node)
-        const kids = await getChildren(node.id).catch(() => [])
-        setVillages(kids)
-        if (kids.length > 0) setSelectedVillageChoiceId(kids[0].id)
-      }
-    }).catch(() => {})
-    .finally(() => setLoadingVillages(false))
-  }, [talukId])
+  const canonicalVillagePath = useMemo(() => {
+    if (activeStep === 11 && segments.length >= 2) {
+      return 'Overseas/' + segments[1]
+    }
+    if (segments.length >= 5) {
+      return 'India/' + segments[1] + '/' + segments[2] + '/' + segments[3] + '/' + segments[4]
+    }
+    return ''
+  }, [activeStep, segments])
 
-  function loadPlots() {
-    if (!selectedVillage) return
+  function openParcelModal(plot) {
+    if (canonicalVillagePath) {
+      navigate('/manage/' + canonicalVillagePath + '/' + plot.id)
+    } else {
+      handleEditPlot(plot)
+    }
+  }
+
+  function handleAddNewParcel() {
+    resetForm()
+    setShowForm(true)
+  }
+
+  function closeParcelModal() {
+    resetForm()
+    setShowForm(false)
+    if (canonicalVillagePath) {
+      navigate('/manage/' + canonicalVillagePath)
+    }
+  }
+
+  function loadPlots(targetNodeId) {
+    const id = targetNodeId || selectedVillage?.id
+    if (!id) return
     setLoading(true)
-    getPlots(selectedVillage.id)
-      .then(setPlots)
+    getPlots(id)
+      .then(async (fetchedPlots) => {
+        setPlots(fetchedPlots)
+        const lastSeg = segments[segments.length - 1]
+        if (isUuid(lastSeg)) {
+          const match = fetchedPlots.find(p => p.id === lastSeg)
+          if (match) {
+            handleEditPlot(match)
+          } else {
+            try {
+              const single = await getPlot(lastSeg)
+              if (single) handleEditPlot(single)
+            } catch {}
+          }
+        }
+      })
       .catch(err => setError(err.response?.data?.detail || 'Failed to load parcels.'))
       .finally(() => setLoading(false))
   }
 
+  // URL Path Synchronization
   useEffect(() => {
-    if (selectedVillage) loadPlots()
-  }, [selectedVillage])
+    let isCancelled = false
+    async function syncFromUrl() {
+      setLoadingStep(true)
+      try {
+        if (segments.length === 0) {
+          setActiveStep(0)
+          setChain([])
+          setShowForm(false)
+          setEditingPlotId(null)
+          const c = await getCountries().catch(() => [])
+          if (!isCancelled) setCountries(c)
+          return
+        }
+
+        // Single UUID legacy route check (e.g. /manage/8464db86-...)
+        if (segments.length === 1 && isUuid(segments[0])) {
+          const res = await resolveGeoPath(segments[0]).catch(() => null)
+          if (res && res.canonical_path) {
+            navigate('/manage/' + res.canonical_path, { replace: true })
+            return
+          }
+        }
+
+        // Overseas Flow
+        if (segments[0].toLowerCase() === 'overseas') {
+          if (segments.length === 1) {
+            setActiveStep(10)
+            setShowForm(false)
+            setEditingPlotId(null)
+            const cList = await getCountries().catch(() => [])
+            const overseas = cList.filter(c => c.name !== 'India')
+            if (!isCancelled) {
+              setCountries(overseas)
+              if (overseas.length > 0) setSelectedOverseasId(overseas[0].id)
+            }
+          } else {
+            setActiveStep(11)
+            const res = await resolveGeoPath(splat).catch(() => null)
+            if (res && !isCancelled) {
+              setChain(res.chain)
+              if (res.current_node) {
+                loadPlots(res.current_node.id)
+              }
+            }
+          }
+          return
+        }
+
+        // India Flow
+        if (segments[0].toLowerCase() === 'india') {
+          const res = await resolveGeoPath(splat).catch(() => null)
+          if (isCancelled || !res) return
+          setChain(res.chain)
+
+          const india = res.chain.find(c => c.level === 'COUNTRY') || res.chain[0]
+
+          if (segments.length === 1) {
+            setActiveStep(1)
+            setShowForm(false)
+            setEditingPlotId(null)
+            if (india) {
+              const stList = await getChildren(india.id).catch(() => [])
+              const sorted = [...stList].sort((a, b) => {
+                if (a.name === 'Tamil Nadu') return -1
+                if (b.name === 'Tamil Nadu') return 1
+                return a.name.localeCompare(b.name)
+              })
+              if (!isCancelled) {
+                setStates(sorted)
+                const tn = sorted.find(s => s.name === 'Tamil Nadu') || sorted[0]
+                if (tn) setSelectedStateId(tn.id)
+              }
+            }
+          } else if (segments.length === 2) {
+            setActiveStep(2)
+            setShowForm(false)
+            setEditingPlotId(null)
+            const currState = res.chain.find(c => c.level === 'STATE')
+            if (currState) {
+              const dtList = await getChildren(currState.id).catch(() => [])
+              const sorted = [...dtList].sort((a, b) => {
+                if (a.name === 'Coimbatore') return -1
+                if (b.name === 'Coimbatore') return 1
+                return a.name.localeCompare(b.name)
+              })
+              if (!isCancelled) {
+                setDistricts(sorted)
+                const cbe = sorted.find(d => d.name === 'Coimbatore') || sorted[0]
+                if (cbe) setSelectedDistrictId(cbe.id)
+              }
+            }
+          } else if (segments.length === 3) {
+            setActiveStep(3)
+            setShowForm(false)
+            setEditingPlotId(null)
+            const currDistrict = res.chain.find(c => c.level === 'DISTRICT')
+            if (currDistrict) {
+              const tlList = await getChildren(currDistrict.id).catch(() => [])
+              if (!isCancelled) {
+                setTaluks(tlList)
+                if (tlList.length > 0) setSelectedTalukId(tlList[0].id)
+              }
+            }
+          } else if (segments.length === 4) {
+            setActiveStep(4)
+            setShowForm(false)
+            setEditingPlotId(null)
+            const currTaluk = res.chain.find(c => c.level === 'TALUK')
+            if (currTaluk) {
+              const vlList = await getChildren(currTaluk.id).catch(() => [])
+              if (!isCancelled) {
+                setVillages(vlList)
+                if (vlList.length > 0) setSelectedVillageChoiceId(vlList[0].id)
+                else setSelectedVillageChoiceId('')
+              }
+            }
+          } else if (segments.length >= 5) {
+            setActiveStep(5)
+            const currVillage = res.chain.find(c => c.level === 'VILLAGE') || res.current_node
+            if (currVillage) {
+              loadPlots(currVillage.id)
+              if (currVillage.parent_id) {
+                getChildren(currVillage.parent_id).then(vlList => {
+                  if (!isCancelled) setVillages(vlList)
+                }).catch(() => {})
+              }
+            }
+          }
+        }
+      } finally {
+        if (!isCancelled) setLoadingStep(false)
+      }
+    }
+
+    syncFromUrl()
+    return () => { isCancelled = true }
+  }, [splat])
 
   function handleFormChange(field, value) {
     setForm(f => ({ ...f, [field]: value }))
@@ -366,6 +565,9 @@ export default function ManagePage() {
       resetForm()
       setShowForm(false)
       setUploadProgress(0)
+      if (canonicalVillagePath) {
+        navigate('/manage/' + canonicalVillagePath)
+      }
       loadPlots()
     } catch (err) {
       setFormError(err.response?.data?.detail || (editingPlotId ? 'Failed to update parcel.' : 'Failed to create parcel.'))
@@ -374,8 +576,6 @@ export default function ManagePage() {
       setSubmitting(false)
     }
   }
-
-
 
   async function handleDelete(plotId) {
     try {
@@ -390,7 +590,7 @@ export default function ManagePage() {
   // ── Village CRUD handlers ──────────────────────────────────────────────
 
   async function handleAddVillage() {
-    const parentTalukId = talukNode?.id || selectedVillage?.parent_id || talukId
+    const parentTalukId = talukNode?.id || (villages[0]?.parent_id)
     if (!newVillageName.trim() || !parentTalukId) return
     setAddVillageLoading(true)
     setAddVillageError('')
@@ -420,10 +620,9 @@ export default function ManagePage() {
     try {
       const updated = await renameVillage(renameVillageId, renameValue.trim())
       setVillages(prev => prev.map(v => v.id === renameVillageId ? { ...v, name: updated.name } : v))
-      if (selectedVillage?.id === renameVillageId) {
-        setSelectedVillage(prev => ({ ...prev, name: updated.name }))
-      }
       setRenameVillageId(null)
+      const newSlug = toSlug(updated.name)
+      navigate('/manage/India/' + segments[1] + '/' + segments[2] + '/' + segments[3] + '/' + newSlug, { replace: true })
     } catch (err) {
       setRenameError(err.response?.data?.detail || 'Failed to rename village.')
     } finally {
@@ -437,16 +636,120 @@ export default function ManagePage() {
       await deleteVillage(village.id)
       setVillages(prev => prev.filter(v => v.id !== village.id))
       setDeleteVillageConfirm(null)
-      if (selectedVillage?.id === village.id) {
-        setSelectedVillage(null)
-        setPlots([])
-        navigate('/navigate/manage')
-      }
+      navigate('/manage/India/' + segments[1] + '/' + segments[2] + '/' + segments[3])
     } catch (err) {
       alert(err.response?.data?.detail || 'Failed to delete village.')
     } finally {
       setDeletingVillage(false)
     }
+  }
+
+  // ── Navigation step continue handlers ──────────────────────────────────
+  function handleStateContinue() {
+    const st = states.find(s => s.id === selectedStateId) || states[0]
+    if (!st) return
+    navigate('/manage/India/' + toSlug(st.name))
+  }
+
+  function handleDistrictContinue() {
+    const dt = districts.find(d => d.id === selectedDistrictId) || districts[0]
+    if (!dt) return
+    navigate('/manage/India/' + segments[1] + '/' + toSlug(dt.name))
+  }
+
+  function handleTalukContinue() {
+    const tl = taluks.find(t => t.id === selectedTalukId) || taluks[0]
+    if (!tl) return
+    navigate('/manage/India/' + segments[1] + '/' + segments[2] + '/' + toSlug(tl.name))
+  }
+
+  function handleVillageContinue() {
+    const vl = villages.find(v => v.id === selectedVillageChoiceId) || villages[0]
+    if (!vl) return
+    navigate('/manage/India/' + segments[1] + '/' + segments[2] + '/' + segments[3] + '/' + toSlug(vl.name))
+  }
+
+  function handleOverseasContinue() {
+    const c = countries.find(co => co.id === selectedOverseasId) || countries[0]
+    if (!c) return
+    navigate('/manage/Overseas/' + toSlug(c.name))
+  }
+
+  function handleBack() {
+    if (showForm) {
+      closeParcelModal()
+      return
+    }
+
+    if (activeStep === 5) {
+      navigate('/manage/India/' + segments[1] + '/' + segments[2] + '/' + segments[3])
+      return
+    }
+
+    if (activeStep === 4) {
+      navigate('/manage/India/' + segments[1] + '/' + segments[2])
+      return
+    }
+
+    if (activeStep === 3) {
+      navigate('/manage/India/' + segments[1])
+      return
+    }
+
+    if (activeStep === 2) {
+      navigate('/manage/India')
+      return
+    }
+
+    if (activeStep === 1) {
+      navigate('/manage')
+      return
+    }
+
+    if (activeStep === 11) {
+      navigate('/manage/Overseas')
+      return
+    }
+
+    if (activeStep === 10) {
+      navigate('/manage')
+      return
+    }
+
+    navigate('/')
+  }
+
+  const getHeaderCenter = () => {
+    if (activeStep === 0) {
+      return <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>Update Records › Select Region</span>
+    }
+    if (activeStep === 1) {
+      return <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>India › Select State</span>
+    }
+    if (activeStep === 2) {
+      return <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>{stateNode?.name || fromSlug(segments[1])} › Select District</span>
+    }
+    if (activeStep === 3) {
+      return <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>{stateNode?.name || fromSlug(segments[1])} › {districtNode?.name || fromSlug(segments[2])} › Select Taluk</span>
+    }
+    if (activeStep === 4) {
+      return <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>{districtNode?.name || fromSlug(segments[2])} › {talukNode?.name || fromSlug(segments[3])} › Select Village</span>
+    }
+    if (activeStep === 5) {
+      const vName = villageNode?.name || fromSlug(segments[4])
+      const tName = talukNode?.name || fromSlug(segments[3])
+      if (showForm && form.land_id) {
+        return <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>{vName} › {form.land_id}</span>
+      }
+      return <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>{tName} › {vName}</span>
+    }
+    if (activeStep === 10) {
+      return <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>Overseas › Select Country</span>
+    }
+    if (activeStep === 11) {
+      return <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>Overseas › {countryNode?.name || fromSlug(segments[1])}</span>
+    }
+    return <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>Update Records</span>
   }
 
   return (
@@ -456,12 +759,8 @@ export default function ManagePage() {
 
       {/* Header */}
       <Header
-        onBack={selectedVillage ? () => { setSelectedVillage(null); setPlots([]); setError('') } : () => navigate('/navigate/manage')}
-        centerContent={
-          <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
-            {talukNode ? `${talukNode.name} › ${selectedVillage ? selectedVillage.name : 'Villages'}` : 'Update Records'}
-          </span>
-        }
+        onBack={handleBack}
+        centerContent={getHeaderCenter()}
       />
 
       {/* Content Wrapper */}
@@ -477,43 +776,224 @@ export default function ManagePage() {
           flex: 1,
         }}
       >
-        {/* Breadcrumb */}
-        <nav className="breadcrumb" style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <a href="/" style={{ color: 'rgba(255, 255, 255, 0.8)', textDecoration: 'none', fontWeight: '500' }}>Home</a>
-          <span className="breadcrumb-sep" style={{ color: 'rgba(255, 255, 255, 0.4)' }}>›</span>
-          <button
-            onClick={() => navigate('/navigate/manage')}
-            style={{ background: 'none', border: 'none', padding: 0, color: 'rgba(255, 255, 255, 0.8)', cursor: 'pointer', fontWeight: '500', textDecoration: 'underline' }}
-          >
-            Update Records
-          </button>
-          <span className="breadcrumb-sep" style={{ color: 'rgba(255, 255, 255, 0.4)' }}>›</span>
-          {selectedVillage ? (
-            <>
-              <button
-                onClick={() => { setSelectedVillage(null); setPlots([]); setError('') }}
-                style={{ background: 'none', border: 'none', padding: 0, color: 'rgba(255, 255, 255, 0.8)', cursor: 'pointer', fontWeight: '500', textDecoration: 'underline' }}
-              >
-                {talukNode?.name || 'Taluk'}
-              </button>
-              <span className="breadcrumb-sep" style={{ color: 'rgba(255, 255, 255, 0.4)' }}>›</span>
-              <span style={{ color: '#ffffff', fontWeight: '600' }}>{selectedVillage.name}</span>
-            </>
-          ) : (
-            <span style={{ color: '#ffffff', fontWeight: '600' }}>{talukNode?.name || 'Taluk'}</span>
-          )}
-        </nav>
+        {/* Breadcrumb (visible on all steps > 0) */}
+        {activeStep > 0 && (
+          <nav className="breadcrumb" style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <a href="/" style={{ color: 'rgba(255, 255, 255, 0.8)', textDecoration: 'none', fontWeight: '500' }}>Home</a>
+            <span className="breadcrumb-sep" style={{ color: 'rgba(255, 255, 255, 0.4)' }}>›</span>
+            <button
+              onClick={() => navigate('/manage')}
+              style={{ background: 'none', border: 'none', padding: 0, color: 'rgba(255, 255, 255, 0.8)', cursor: 'pointer', fontWeight: '500', textDecoration: activeStep > 0 ? 'underline' : 'none' }}
+            >
+              Update Records
+            </button>
 
-        {/* ── Village Selection Card (like districts or states page) ───── */}
-        {!selectedVillage && (
+            {segments[0]?.toLowerCase() === 'overseas' && (
+              <>
+                <span className="breadcrumb-sep" style={{ color: 'rgba(255, 255, 255, 0.4)' }}>›</span>
+                {segments.length > 1 ? (
+                  <button
+                    onClick={() => navigate('/manage/Overseas')}
+                    style={{ background: 'none', border: 'none', padding: 0, color: 'rgba(255, 255, 255, 0.8)', cursor: 'pointer', fontWeight: '500', textDecoration: 'underline' }}
+                  >
+                    Overseas
+                  </button>
+                ) : (
+                  <span style={{ color: '#ffffff', fontWeight: '600' }}>Overseas</span>
+                )}
+                {segments[1] && (
+                  <>
+                    <span className="breadcrumb-sep" style={{ color: 'rgba(255, 255, 255, 0.4)' }}>›</span>
+                    <span style={{ color: '#ffffff', fontWeight: '600' }}>{countryNode?.name || fromSlug(segments[1])}</span>
+                  </>
+                )}
+              </>
+            )}
+
+            {segments[0]?.toLowerCase() === 'india' && (
+              <>
+                {segments[1] && (
+                  <>
+                    <span className="breadcrumb-sep" style={{ color: 'rgba(255, 255, 255, 0.4)' }}>›</span>
+                    {segments.length > 2 ? (
+                      <button
+                        onClick={() => navigate('/manage/India/' + segments[1])}
+                        style={{ background: 'none', border: 'none', padding: 0, color: 'rgba(255, 255, 255, 0.8)', cursor: 'pointer', fontWeight: '500', textDecoration: 'underline' }}
+                      >
+                        {stateNode?.name || fromSlug(segments[1])}
+                      </button>
+                    ) : (
+                      <span style={{ color: '#ffffff', fontWeight: '600' }}>{stateNode?.name || fromSlug(segments[1])}</span>
+                    )}
+                  </>
+                )}
+                {segments[2] && (
+                  <>
+                    <span className="breadcrumb-sep" style={{ color: 'rgba(255, 255, 255, 0.4)' }}>›</span>
+                    {segments.length > 3 ? (
+                      <button
+                        onClick={() => navigate('/manage/India/' + segments[1] + '/' + segments[2])}
+                        style={{ background: 'none', border: 'none', padding: 0, color: 'rgba(255, 255, 255, 0.8)', cursor: 'pointer', fontWeight: '500', textDecoration: 'underline' }}
+                      >
+                        {districtNode?.name || fromSlug(segments[2])}
+                      </button>
+                    ) : (
+                      <span style={{ color: '#ffffff', fontWeight: '600' }}>{districtNode?.name || fromSlug(segments[2])}</span>
+                    )}
+                  </>
+                )}
+                {segments[3] && (
+                  <>
+                    <span className="breadcrumb-sep" style={{ color: 'rgba(255, 255, 255, 0.4)' }}>›</span>
+                    {segments.length > 4 ? (
+                      <button
+                        onClick={() => navigate('/manage/India/' + segments[1] + '/' + segments[2] + '/' + segments[3])}
+                        style={{ background: 'none', border: 'none', padding: 0, color: 'rgba(255, 255, 255, 0.8)', cursor: 'pointer', fontWeight: '500', textDecoration: 'underline' }}
+                      >
+                        {talukNode?.name || fromSlug(segments[3])}
+                      </button>
+                    ) : (
+                      <span style={{ color: '#ffffff', fontWeight: '600' }}>{talukNode?.name || fromSlug(segments[3])}</span>
+                    )}
+                  </>
+                )}
+                {segments[4] && (
+                  <>
+                    <span className="breadcrumb-sep" style={{ color: 'rgba(255, 255, 255, 0.4)' }}>›</span>
+                    <span style={{ color: '#ffffff', fontWeight: '600' }}>{villageNode?.name || fromSlug(segments[4])}</span>
+                  </>
+                )}
+              </>
+            )}
+          </nav>
+        )}
+
+        {/* ── Step 0: Select Region ───────────────────────────────────── */}
+        {activeStep === 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+            <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
+              <img src="/logo.png" alt="LMS Logo" style={{ height: '84px', width: 'auto', marginBottom: '0.85rem', filter: 'brightness(0) invert(1) drop-shadow(0 2px 10px rgba(0, 0, 0, 0.5))' }} />
+              <h1 className="home-hero-title">Update Records</h1>
+              <p className="home-hero-subtitle">Administrative Portal to Manage &amp; Update Parcel Database</p>
+            </div>
+            <div className="map-selection-card" style={{ width: '100%', maxWidth: '440px' }}>
+              <div className="map-selection-header">
+                <div className="map-selection-icon"><img src="/world.png" alt="World" /></div>
+                <h2 className="map-selection-title">Select Region</h2>
+                <p className="map-selection-subtitle">Choose a region to manage registered land parcels</p>
+              </div>
+              <div className="selection-option-list">
+                <button className="selection-option-btn" onClick={() => navigate('/manage/India')} autoFocus>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                    <img src="/india-flag.png" alt="India" className="selection-option-img" />
+                    <span style={{ fontWeight: '600' }}>India</span>
+                  </span>
+                  <ChevronRight size={18} style={{ color: 'var(--color-primary)' }} />
+                </button>
+                <button className="selection-option-btn" onClick={() => navigate('/manage/Overseas')}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                    <img src="/globe-small.png" alt="Overseas" className="selection-option-img" />
+                    <span style={{ fontWeight: '600' }}>Overseas</span>
+                  </span>
+                  <ChevronRight size={18} style={{ color: 'var(--color-primary)' }} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 1: Select State ────────────────────────────────────── */}
+        {activeStep === 1 && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+            <div className="map-selection-card" style={{ width: '100%', maxWidth: '440px', margin: '0 auto' }}>
+              <div className="map-selection-header">
+                <div className="map-selection-icon"><img src="/india.png" alt="India" /></div>
+                <h2 className="map-selection-title">Select State</h2>
+                <p className="map-selection-subtitle">India • Choose state to view district boundaries</p>
+              </div>
+              <div className="selection-dropdown-wrapper">
+                <label className="form-label" style={{ marginBottom: '0.5rem', fontWeight: '600' }}>State</label>
+                {states.length === 0 ? (
+                  <p style={{ color: 'var(--color-text-muted)' }}>No states available.</p>
+                ) : (
+                  <select className="selection-select" value={selectedStateId} onChange={e => setSelectedStateId(e.target.value)}>
+                    {states.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '0.85rem', fontWeight: '600' }} onClick={handleStateContinue} disabled={!selectedStateId || loadingStep}>
+                {loadingStep ? 'Loading...' : 'Continue to District →'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 2: Select District ─────────────────────────────────── */}
+        {activeStep === 2 && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+            <div className="map-selection-card" style={{ width: '100%', maxWidth: '440px', margin: '0 auto' }}>
+              <div className="map-selection-header">
+                <div className="map-selection-icon"><img src="/tamil-nadu.png" alt="District" /></div>
+                <h2 className="map-selection-title">Select District</h2>
+                <p className="map-selection-subtitle">{stateNode?.name || fromSlug(segments[1])} • Choose district to view its taluks</p>
+              </div>
+              <div className="selection-dropdown-wrapper">
+                <label className="form-label" style={{ marginBottom: '0.5rem', fontWeight: '600' }}>District</label>
+                {districts.length === 0 ? (
+                  <p style={{ color: 'var(--color-text-muted)' }}>No districts available.</p>
+                ) : (
+                  <select className="selection-select" value={selectedDistrictId} onChange={e => setSelectedDistrictId(e.target.value)}>
+                    {districts.map(d => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '0.85rem', fontWeight: '600' }} onClick={handleDistrictContinue} disabled={!selectedDistrictId || loadingStep}>
+                {loadingStep ? 'Loading...' : 'Continue to Taluk →'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 3: Select Taluk ────────────────────────────────────── */}
+        {activeStep === 3 && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+            <div className="map-selection-card" style={{ width: '100%', maxWidth: '440px', margin: '0 auto' }}>
+              <div className="map-selection-header">
+                <div className="map-selection-icon"><img src="/tamil-nadu.png" alt="Taluk" /></div>
+                <h2 className="map-selection-title">Select Taluk</h2>
+                <p className="map-selection-subtitle">{districtNode?.name || fromSlug(segments[2])} • Choose taluk to manage records</p>
+              </div>
+              <div className="selection-dropdown-wrapper">
+                <label className="form-label" style={{ marginBottom: '0.5rem', fontWeight: '600' }}>Taluk</label>
+                {taluks.length === 0 ? (
+                  <p style={{ color: 'var(--color-text-muted)' }}>No taluks available.</p>
+                ) : (
+                  <select className="selection-select" value={selectedTalukId} onChange={e => setSelectedTalukId(e.target.value)}>
+                    {taluks.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '0.85rem', fontWeight: '600' }} onClick={handleTalukContinue} disabled={!selectedTalukId || taluks.length === 0 || loadingStep}>
+                {loadingStep ? 'Loading...' : 'Continue to Village →'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 4: Select Village Card ─────────────────────────────── */}
+        {activeStep === 4 && (
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
             <div className="map-selection-card" style={{ width: '100%', maxWidth: '440px', margin: '0 auto' }}>
               <div className="map-selection-header">
                 <div className="map-selection-icon"><img src="/tamil-nadu.png" alt="Village" /></div>
                 <h2 className="map-selection-title">Select Village</h2>
-                <p className="map-selection-subtitle">
-                  {talukNode?.name || 'Taluk'} • Choose village to manage records
-                </p>
+                <p className="map-selection-subtitle">{talukNode?.name || fromSlug(segments[3])} • Choose village to manage records</p>
               </div>
               <div className="selection-dropdown-wrapper">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
@@ -528,13 +1008,9 @@ export default function ManagePage() {
                   </button>
                 </div>
                 {villages.length === 0 ? (
-                   <p style={{ color: 'var(--color-text-muted)' }}>No villages available in this taluk.</p>
+                  <p style={{ color: 'var(--color-text-muted)' }}>No villages available in this taluk.</p>
                 ) : (
-                  <select
-                    className="selection-select"
-                    value={selectedVillageChoiceId}
-                    onChange={e => setSelectedVillageChoiceId(e.target.value)}
-                  >
+                  <select className="selection-select" value={selectedVillageChoiceId} onChange={e => setSelectedVillageChoiceId(e.target.value)}>
                     {villages.map(v => (
                       <option key={v.id} value={v.id}>{v.name}</option>
                     ))}
@@ -544,24 +1020,50 @@ export default function ManagePage() {
               <button
                 className="btn btn-primary"
                 style={{ width: '100%', justifyContent: 'center', padding: '0.85rem', fontWeight: '600' }}
-                onClick={() => {
-                  const target = villages.find(v => v.id === selectedVillageChoiceId) || villages[0]
-                  if (target) {
-                    setSelectedVillage(target)
-                    setPlots([])
-                    setError('')
-                  }
-                }}
-                disabled={villages.length === 0 || !selectedVillageChoiceId}
+                onClick={handleVillageContinue}
+                disabled={villages.length === 0 || !selectedVillageChoiceId || loadingStep}
               >
-                Continue to Village Parcels →
+                {loadingStep ? 'Loading...' : 'Continue to Village Parcels →'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 10: Select Overseas Country ────────────────────────── */}
+        {activeStep === 10 && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+            <div className="map-selection-card" style={{ width: '100%', maxWidth: '440px', margin: '0 auto' }}>
+              <div className="map-selection-header">
+                <div className="map-selection-icon"><img src="/world.png" alt="Overseas" /></div>
+                <h2 className="map-selection-title">Select Country</h2>
+                <p className="map-selection-subtitle">Choose overseas country to update records</p>
+              </div>
+              <div className="selection-dropdown-wrapper">
+                <label className="form-label" style={{ marginBottom: '0.5rem', fontWeight: '600' }}>Country</label>
+                {countries.length === 0 ? (
+                  <p style={{ color: 'var(--color-text-muted)' }}>No countries available.</p>
+                ) : (
+                  <select className="selection-select" value={selectedOverseasId} onChange={e => setSelectedOverseasId(e.target.value)}>
+                    {countries.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <button
+                className="btn btn-primary"
+                style={{ width: '100%', justifyContent: 'center', padding: '0.85rem', fontWeight: '600' }}
+                onClick={handleOverseasContinue}
+                disabled={!selectedOverseasId || loadingStep}
+              >
+                {loadingStep ? 'Loading...' : 'Continue to Country Parcels →'}
               </button>
             </div>
           </div>
         )}
 
         {/* ── Parcel List View (after village selected) ──────────────────── */}
-        {selectedVillage && (
+        {(activeStep === 5 || activeStep === 11) && selectedVillage && (
           <>
             {/* Page Header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.75rem', flexWrap: 'wrap', gap: '0.75rem' }}>
@@ -636,7 +1138,7 @@ export default function ManagePage() {
                     boxShadow: '0 4px 16px rgba(37, 99, 235, 0.45)',
                     borderRadius: '10px'
                   }}
-                  onClick={() => { resetForm(); setShowForm(true) }}
+                  onClick={handleAddNewParcel}
                 >
                   + Add New Parcel
                 </button>
@@ -715,7 +1217,7 @@ export default function ManagePage() {
                         <button
                           className="btn btn-outline btn-sm"
                           style={{ fontWeight: '600', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
-                          onClick={() => handleEditPlot(plot)}
+                          onClick={() => openParcelModal(plot)}
                         >
                           <Pencil size={13} /> Edit
                         </button>
@@ -737,11 +1239,11 @@ export default function ManagePage() {
 
         {/* Add Parcel Modal */}
         {showForm && (
-          <div className="modal-overlay" onClick={() => setShowForm(false)}>
+          <div className="modal-overlay" onClick={closeParcelModal}>
             <div className="modal modal-large" onClick={e => e.stopPropagation()}>
               <div className="modal-header">
                 <span className="modal-title">{editingPlotId ? `Edit Parcel — ${form.land_id || 'Parcel'}` : 'Add New Parcel'}</span>
-                <button className="btn-outline" style={{ border: 'none', padding: '0.2rem 0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setShowForm(false)}>
+                <button className="btn-outline" style={{ border: 'none', padding: '0.2rem 0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={closeParcelModal}>
                   <X size={20} />
                 </button>
               </div>
@@ -1024,7 +1526,7 @@ export default function ManagePage() {
                 </div>
                 
                 <div className="modal-footer">
-                  <button type="button" className="btn btn-outline" onClick={() => setShowForm(false)} disabled={submitting}>Cancel</button>
+                  <button type="button" className="btn btn-outline" onClick={closeParcelModal} disabled={submitting}>Cancel</button>
                   
                   {submitting ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', width: '200px' }}>

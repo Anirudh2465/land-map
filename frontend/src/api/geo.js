@@ -20,6 +20,16 @@ export async function getNode(nodeId) {
   return res.data
 }
 
+export async function resolveGeoPath(path) {
+  const res = await client.get('/geo/resolve-path', { params: { path } })
+  return res.data
+}
+
+export async function getNodeHierarchy(nodeId) {
+  const res = await client.get(`/geo/${nodeId}/hierarchy`)
+  return res.data
+}
+
 // ── Village CRUD (admin only) ──────────────────────────────────────────────────
 
 export async function createVillage(talukId, name) {

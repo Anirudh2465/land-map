@@ -34,6 +34,13 @@ class VillageRename(BaseModel):
     name: str
 
 
+class ResolvePathResponse(BaseModel):
+    chain: List[GeoNodeOut]
+    current_node: Optional[GeoNodeOut] = None
+    parcel_id: Optional[str] = None
+    canonical_path: str
+
+
 def get_plot_count(db: Session, node: GeoNode) -> int:
     """Recursively count ACTIVE plots under a geo node at any level."""
     if node.level == 'VILLAGE':
@@ -208,7 +215,139 @@ def delete_village(
     db.commit()
 
 
-# ── Existing single-node endpoints ─────────────────────────────────────────────
+def normalize_name(s: str) -> str:
+    return s.strip().lower().replace("-", " ").replace("_", " ")
+
+
+@router.get("/resolve-path", response_model=ResolvePathResponse)
+def resolve_geo_path(path: str, db: Session = Depends(get_db)):
+    """
+    Resolve a URL path like 'India/Tamil-Nadu/Coimbatore/Coimbatore-South/Bogampatti'
+    (and optional parcel UUID) into matched GeoNodes.
+    """
+    raw_segments = [s.strip() for s in path.strip("/").split("/") if s.strip()]
+    if not raw_segments:
+        return {"chain": [], "current_node": None, "parcel_id": None, "canonical_path": ""}
+
+    parcel_id = None
+    # Check if last segment is a 36-char UUID matching a Plot
+    if len(raw_segments) > 0:
+        try:
+            val = uuid.UUID(raw_segments[-1])
+            plot = db.query(Plot).filter(Plot.id == val).first()
+            if plot:
+                parcel_id = str(val)
+                raw_segments.pop()
+            elif len(raw_segments) == 1:
+                # Legacy URL /manage/:uuid where :uuid is a GeoNode
+                node = db.query(GeoNode).filter(GeoNode.id == val).first()
+                if node:
+                    chain = []
+                    curr = node
+                    while curr:
+                        curr.plot_count = get_plot_count(db, curr)
+                        chain.append(curr)
+                        if not curr.parent_id:
+                            break
+                        curr = db.query(GeoNode).filter(GeoNode.id == curr.parent_id).first()
+                    chain.reverse()
+                    canonical_path = "/".join(c.name.replace(" ", "-") for c in chain)
+                    return {
+                        "chain": chain,
+                        "current_node": node,
+                        "parcel_id": None,
+                        "canonical_path": canonical_path
+                    }
+        except ValueError:
+            pass
+
+    # Traverse step-by-step down the tree starting at COUNTRY
+    chain = []
+    parent_id = None
+
+    for seg in raw_segments:
+        norm = normalize_name(seg)
+        # Skip literal "Overseas" segment if followed by an overseas country
+        if norm == "overseas" and parent_id is None:
+            continue
+
+        query = db.query(GeoNode)
+        if parent_id is None:
+            query = query.filter(GeoNode.level == "COUNTRY")
+        else:
+            query = query.filter(GeoNode.parent_id == parent_id)
+
+        candidates = query.all()
+        matched = None
+        for c in candidates:
+            if normalize_name(c.name) == norm:
+                matched = c
+                break
+
+        if not matched:
+            for c in candidates:
+                c_norm = normalize_name(c.name)
+                if norm in c_norm or c_norm in norm:
+                    matched = c
+                    break
+
+        if matched:
+            matched.plot_count = get_plot_count(db, matched)
+            chain.append(matched)
+            parent_id = matched.id
+        else:
+            # Check if this segment is a parcel UUID
+            try:
+                val = uuid.UUID(seg)
+                plot = db.query(Plot).filter(Plot.id == val).first()
+                if plot:
+                    parcel_id = str(val)
+                    break
+            except ValueError:
+                pass
+            break
+
+    current_node = chain[-1] if chain else None
+    canonical_path = "/".join(c.name.replace(" ", "-") for c in chain)
+    return {
+        "chain": chain,
+        "current_node": current_node,
+        "parcel_id": parcel_id,
+        "canonical_path": canonical_path
+    }
+
+
+@router.get("/by-name/{level}/{name}", response_model=GeoNodeOut)
+def get_node_by_name(level: str, name: str, db: Session = Depends(get_db)):
+    """Get a GeoNode by its level and name (e.g. DISTRICT/Coimbatore or DISTRICT/Coimbatore-South)."""
+    clean_name = name.replace("-", " ")
+    node = db.query(GeoNode).filter(
+        GeoNode.level == level.upper(),
+        (GeoNode.name.ilike(name)) | (GeoNode.name.ilike(clean_name))
+    ).first()
+    if not node:
+        raise HTTPException(status_code=404, detail=f"GeoNode {level}/{name} not found")
+    node.plot_count = get_plot_count(db, node)
+    return node
+
+
+@router.get("/{node_id}/hierarchy", response_model=List[GeoNodeOut])
+def get_node_hierarchy(node_id: UUID, db: Session = Depends(get_db)):
+    """Get the ancestor chain of a node from COUNTRY down to the node itself."""
+    node = db.query(GeoNode).filter(GeoNode.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="GeoNode not found")
+    chain = []
+    curr = node
+    while curr:
+        curr.plot_count = get_plot_count(db, curr)
+        chain.append(curr)
+        if not curr.parent_id:
+            break
+        curr = db.query(GeoNode).filter(GeoNode.id == curr.parent_id).first()
+    chain.reverse()
+    return chain
+
 
 @router.get("/{node_id}", response_model=GeoNodeOut)
 def get_node(node_id: UUID, db: Session = Depends(get_db)):
@@ -219,15 +358,3 @@ def get_node(node_id: UUID, db: Session = Depends(get_db)):
     node.plot_count = get_plot_count(db, node)
     return node
 
-
-@router.get("/by-name/{level}/{name}", response_model=GeoNodeOut)
-def get_node_by_name(level: str, name: str, db: Session = Depends(get_db)):
-    """Get a GeoNode by its level and name (e.g. DISTRICT/Coimbatore)."""
-    node = db.query(GeoNode).filter(
-        GeoNode.level == level.upper(),
-        GeoNode.name == name
-    ).first()
-    if not node:
-        raise HTTPException(status_code=404, detail=f"GeoNode {level}/{name} not found")
-    node.plot_count = get_plot_count(db, node)
-    return node
