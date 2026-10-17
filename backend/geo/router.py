@@ -92,6 +92,10 @@ def list_children(node_id: UUID, db: Session = Depends(get_db)):
     if not node:
         raise HTTPException(status_code=404, detail="GeoNode not found")
     children = db.query(GeoNode).filter(GeoNode.parent_id == node_id).order_by(GeoNode.name).all()
+    if node.level == 'COUNTRY' and node.name == 'India':
+        children.sort(key=lambda c: (0 if c.name == 'Tamil Nadu' else 1, c.name))
+    elif node.level == 'STATE' and node.name == 'Tamil Nadu':
+        children.sort(key=lambda c: (0 if c.name == 'Coimbatore' else 1, c.name))
     for child in children:
         child.plot_count = get_plot_count(db, child)
     return children

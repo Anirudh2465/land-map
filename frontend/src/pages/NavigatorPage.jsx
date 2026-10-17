@@ -6,7 +6,7 @@
  *   India → States → Districts → Taluks → Map/Manage
  *   Overseas → Countries → Map/Manage
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getCountries, getChildren } from '../api/geo'
 import Header from '../components/Header'
@@ -44,34 +44,60 @@ export default function NavigatorPage() {
   const indiaNode = countries.find(c => c.name === 'India')
   const overseasNodes = countries.filter(c => c.name !== 'India')
 
-  // Display nodes
-  const displayStates = states
-  const displayDistricts = districts
+  // Display nodes with Tamil Nadu and Coimbatore prioritized as 1st choices
+  const displayStates = useMemo(() => {
+    return [...states].sort((a, b) => {
+      if (a.name === 'Tamil Nadu') return -1
+      if (b.name === 'Tamil Nadu') return 1
+      return a.name.localeCompare(b.name)
+    })
+  }, [states])
+
+  const displayDistricts = useMemo(() => {
+    return [...districts].sort((a, b) => {
+      if (a.name === 'Coimbatore') return -1
+      if (b.name === 'Coimbatore') return 1
+      return a.name.localeCompare(b.name)
+    })
+  }, [districts])
+
   const displayTaluks = taluks
   const displayOverseas = overseasNodes
 
-  // Fetch states when India is selected
+  // Fetch states when India is selected — default automatically to Tamil Nadu
   async function handleSelectIndia() {
     if (!indiaNode) return
     setLoadingRegions(true)
     try {
       const st = await getChildren(indiaNode.id)
-      setStates(st)
-      if (st.length > 0) setSelectedStateId(st[0].id)
+      const sorted = [...st].sort((a, b) => {
+        if (a.name === 'Tamil Nadu') return -1
+        if (b.name === 'Tamil Nadu') return 1
+        return a.name.localeCompare(b.name)
+      })
+      setStates(sorted)
+      const tn = sorted.find(s => s.name === 'Tamil Nadu') || sorted[0]
+      if (tn) setSelectedStateId(tn.id)
       setStep(1)
     } finally {
       setLoadingRegions(false)
     }
   }
 
-  // Fetch districts when State is confirmed
+  // Fetch districts when State is confirmed — default automatically to Coimbatore
   async function handleStateContinue() {
     if (!selectedStateId) return
     setLoadingRegions(true)
     try {
       const dt = await getChildren(selectedStateId)
-      setDistricts(dt)
-      if (dt.length > 0) setSelectedDistrictId(dt[0].id)
+      const sorted = [...dt].sort((a, b) => {
+        if (a.name === 'Coimbatore') return -1
+        if (b.name === 'Coimbatore') return 1
+        return a.name.localeCompare(b.name)
+      })
+      setDistricts(sorted)
+      const cbe = sorted.find(d => d.name === 'Coimbatore') || sorted[0]
+      if (cbe) setSelectedDistrictId(cbe.id)
       setStep(2)
     } finally {
       setLoadingRegions(false)
