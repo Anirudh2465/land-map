@@ -1155,19 +1155,12 @@ export default function MapPage() {
 
   const getHeaderCenter = () => {
     if (currentStep === 'READY') {
-      const parcelCount = filteredPlots.filter(p => p.boundary_geojson).length
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
           <span className="header-center-title">
             {selectedVillage || (activeNode ? activeNode.name : 'Coimbatore')} — Land Parcels
           </span>
-          {loading ? (
-            <span className="spinner" />
-          ) : (
-            <span className="badge badge-blue">
-              {parcelCount} {parcelCount === 1 ? 'parcel' : 'parcels'}
-            </span>
-          )}
+          {loading && <span className="spinner" />}
         </div>
       )
     }
@@ -1661,7 +1654,7 @@ export default function MapPage() {
             {isSearchOpen && (
               <div className="search-dropdown-menu">
                 <div className="search-dropdown-header">
-                  <span>Parcels in {selectedVillage || 'Region'} ({filteredPlots.length})</span>
+                  <span>Parcels in {selectedVillage || 'Region'}</span>
                 </div>
                 <div className="search-dropdown-list">
                   {filteredPlots.map(plot => {
@@ -2441,11 +2434,7 @@ export default function MapPage() {
                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
                         <img src="/india-flag.png" alt="India" className="selection-option-img" />
                         <span style={{ fontWeight: '600' }}>India</span>
-                        {indiaPlotCount > 0 && (
-                          <span className="badge badge-blue" style={{ fontSize: '0.725rem' }}>
-                            {indiaPlotCount} {indiaPlotCount === 1 ? 'parcel' : 'parcels'}
-                          </span>
-                        )}
+
                       </span>
                       <ChevronRight size={18} style={{ color: 'var(--color-primary)' }} />
                     </button>
@@ -2479,7 +2468,7 @@ export default function MapPage() {
                       value={selectedState}
                       onChange={e => setSelectedState(e.target.value)}
                     >
-                      <option value="Tamil Nadu">Tamil Nadu {tnPlotCount > 0 ? `(${tnPlotCount} parcels)` : ''}</option>
+                      <option value="Tamil Nadu">Tamil Nadu</option>
                       {INDIA_STATES.filter(s => s !== 'Tamil Nadu').map(s => (
                         <option key={s} value={s}>{s}</option>
                       ))}
@@ -2515,7 +2504,7 @@ export default function MapPage() {
                       value={selectedDistrict}
                       onChange={e => setSelectedDistrict(e.target.value)}
                     >
-                      <option value="Coimbatore">Coimbatore {cbePlotCount > 0 ? `(${cbePlotCount} parcels)` : ''}</option>
+                      <option value="Coimbatore">Coimbatore</option>
                       {TN_DISTRICTS.filter(d => d !== 'Coimbatore').map(d => (
                         <option key={d} value={d}>{d}</option>
                       ))}

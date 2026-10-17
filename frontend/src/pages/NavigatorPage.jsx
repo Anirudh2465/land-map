@@ -134,11 +134,6 @@ export default function NavigatorPage() {
                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
                   <img src="/india-flag.png" alt="India" className="selection-option-img" />
                   <span style={{ fontWeight: '600' }}>India</span>
-                  {indiaNode && indiaNode.plot_count > 0 && (
-                    <span className="badge badge-blue" style={{ fontSize: '0.725rem' }}>
-                      {indiaNode.plot_count} {indiaNode.plot_count === 1 ? 'parcel' : 'parcels'}
-                    </span>
-                  )}
                 </span>
                 <ChevronRight size={18} style={{ color: 'var(--color-primary)' }} />
               </button>
@@ -147,11 +142,6 @@ export default function NavigatorPage() {
                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
                   <img src="/globe-small.png" alt="Overseas" className="selection-option-img" />
                   <span style={{ fontWeight: '600' }}>Overseas</span>
-                  {displayOverseas.length > 0 && (
-                    <span className="badge badge-blue" style={{ fontSize: '0.725rem' }}>
-                      {displayOverseas.reduce((acc, c) => acc + c.plot_count, 0)} parcels
-                    </span>
-                  )}
                 </span>
                 <ChevronRight size={18} style={{ color: 'var(--color-primary)' }} />
               </button>
@@ -173,7 +163,7 @@ export default function NavigatorPage() {
               ) : (
                 <select className="selection-select" value={selectedStateId} onChange={e => setSelectedStateId(e.target.value)}>
                   {displayStates.map(s => (
-                    <option key={s.id} value={s.id}>{s.name} {s.plot_count > 0 ? `(${s.plot_count} parcels)` : ''}</option>
+                    <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
               )}
@@ -198,7 +188,7 @@ export default function NavigatorPage() {
               ) : (
                 <select className="selection-select" value={selectedDistrictId} onChange={e => setSelectedDistrictId(e.target.value)}>
                   {displayDistricts.map(d => (
-                    <option key={d.id} value={d.id}>{d.name} {d.plot_count > 0 ? `(${d.plot_count} parcels)` : ''}</option>
+                    <option key={d.id} value={d.id}>{d.name}</option>
                   ))}
                 </select>
               )}
@@ -223,7 +213,7 @@ export default function NavigatorPage() {
               ) : (
                 <select className="selection-select" value={selectedOverseasId} onChange={e => setSelectedOverseasId(e.target.value)}>
                   {displayOverseas.map(c => (
-                    <option key={c.id} value={c.id}>{c.name} {c.plot_count > 0 ? `(${c.plot_count} parcels)` : ''}</option>
+                    <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
               )}
