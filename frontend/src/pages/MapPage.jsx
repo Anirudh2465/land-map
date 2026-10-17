@@ -838,20 +838,39 @@ export default function MapPage() {
         setSelectedTalukNode(node)
         setSelectedTaluk(node.name)
         getChildren(node.id).then(setVillagesList).catch(() => {})
+        setCurrentStep('VILLAGE')
+        setIsBlurOverlayVisible(true)
+        setPlots([])
+        setLoading(false)
       } else if (node?.level === 'VILLAGE') {
         setSelectedVillageNode(node)
         setSelectedVillage(node.name)
+        setCurrentStep('READY')
+        setIsBlurOverlayVisible(false)
+        getPlots(activeDistrictId)
+          .then(setPlots)
+          .catch(err => setError(err.response?.data?.detail || 'Failed to load parcels.'))
+          .finally(() => setLoading(false))
       } else if (node?.level === 'DISTRICT') {
         setSelectedDistrictNode(node)
         setSelectedDistrict(node.name)
         getChildren(node.id).then(setTaluksList).catch(() => {})
+        setCurrentStep('TALUK')
+        setIsBlurOverlayVisible(true)
+        setPlots([])
+        setLoading(false)
+      } else {
+        // COUNTRY / overseas
+        setCurrentStep('READY')
+        setIsBlurOverlayVisible(false)
+        getPlots(activeDistrictId)
+          .then(setPlots)
+          .catch(err => setError(err.response?.data?.detail || 'Failed to load parcels.'))
+          .finally(() => setLoading(false))
       }
-    }).catch(() => {})
-
-    getPlots(activeDistrictId)
-      .then(setPlots)
-      .catch(err => setError(err.response?.data?.detail || 'Failed to load parcels.'))
-      .finally(() => setLoading(false))
+    }).catch(() => {
+      setLoading(false)
+    })
   }, [activeDistrictId])
 
   // ── Load Geo Nodes for Counts ──────────────────────────────────────
@@ -1208,42 +1227,6 @@ export default function MapPage() {
         setCurrentStep('READY')
         map.invalidateSize()
       })
-    }
-  }
-
-  function handleSkipVillage() {
-    setSelectedVillage('')
-    setSelectedVillageNode(null)
-    setIsBlurOverlayVisible(false)
-    setCurrentStep('READY')
-
-    setLoading(true)
-    try {
-      const targetId = selectedTalukNode?.id || activeDistrictId
-      if (targetId) {
-        getPlots(targetId)
-          .then(pList => {
-            setPlots(pList)
-            const map = mapInstanceRef.current
-            if (map && pList.length > 0) {
-              const pts = pList.filter(p => p.lat != null && p.lon != null).map(p => [p.lat, p.lon])
-              if (pts.length > 0) {
-                map.flyToBounds(L.latLngBounds(pts), { padding: [80, 80], maxZoom: 16, duration: 1.0 })
-              }
-            }
-          })
-          .catch(err => setError(err.response?.data?.detail || 'Failed to load parcels.'))
-          .finally(() => setLoading(false))
-      } else {
-        setLoading(false)
-      }
-    } catch {
-      setLoading(false)
-    }
-
-    const map = mapInstanceRef.current
-    if (map) {
-      map.invalidateSize()
     }
   }
 
@@ -2737,14 +2720,6 @@ export default function MapPage() {
                     disabled={villagesList.length === 0 && !selectedVillage}
                   >
                     Explore Village Parcels →
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-outline"
-                    style={{ width: '100%', justifyContent: 'center', padding: '0.7rem', fontWeight: '500', color: 'var(--color-text-muted)' }}
-                    onClick={handleSkipVillage}
-                  >
-                    Skip
                   </button>
                 </div>
               </div>

@@ -113,7 +113,7 @@ def list_plots(geo_node_id: Optional[UUID] = None, district_id: Optional[UUID] =
         village_ids = db.query(GeoNode.id).filter(GeoNode.parent_id == node_id)
         plots = (
             db.query(Plot)
-            .filter((Plot.geo_node_id == node_id) | (Plot.geo_node_id.in_(village_ids)), Plot.status == "ACTIVE")
+            .filter(Plot.geo_node_id.in_(village_ids), Plot.status == "ACTIVE")
             .all()
         )
     elif node.level == 'DISTRICT':
@@ -207,7 +207,12 @@ async def create_plot(
     # Validate geo node exists
     node = db.query(GeoNode).filter(GeoNode.id == geo_node_id).first()
     if not node:
-        raise HTTPException(status_code=404, detail="GeoNode (village/district) not found")
+        raise HTTPException(status_code=404, detail="Village GeoNode not found")
+    if node.level != "VILLAGE":
+        raise HTTPException(
+            status_code=400,
+            detail="Land parcels can only be created under a village. Taluks, districts, and regions cannot directly have land parcels."
+        )
 
     # Check land_id uniqueness within geo node (only for ACTIVE plots)
     existing = db.query(Plot).filter(

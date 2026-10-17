@@ -22,11 +22,13 @@ export default function NavigatorPage() {
   const [states, setStates] = useState([])
   const [districts, setDistricts] = useState([])
   const [taluks, setTaluks] = useState([])
+  const [villages, setVillages] = useState([])
 
   const [selectedOverseasId, setSelectedOverseasId] = useState('')
   const [selectedStateId, setSelectedStateId] = useState('')
   const [selectedDistrictId, setSelectedDistrictId] = useState('')
   const [selectedTalukId, setSelectedTalukId] = useState('')
+  const [selectedVillageId, setSelectedVillageId] = useState('')
   
   const [loadingRegions, setLoadingRegions] = useState(false)
 
@@ -90,6 +92,24 @@ export default function NavigatorPage() {
     }
   }
 
+  // Fetch villages when Taluk is confirmed (in View mode)
+  async function handleTalukContinue() {
+    if (!selectedTalukId) return
+    if (!isView) {
+      handleNavigate(selectedTalukId)
+      return
+    }
+    setLoadingRegions(true)
+    try {
+      const vl = await getChildren(selectedTalukId)
+      setVillages(vl)
+      if (vl.length > 0) setSelectedVillageId(vl[0].id)
+      setStep(4)
+    } finally {
+      setLoadingRegions(false)
+    }
+  }
+
   function handleSelectOverseasBtn() {
     if (displayOverseas.length > 0) {
       setSelectedOverseasId(displayOverseas[0].id)
@@ -107,6 +127,7 @@ export default function NavigatorPage() {
   }
 
   function handleBack() {
+    if (step === 4) { setStep(3); return }
     if (step === 3) { setStep(2); return }
     if (step === 2) { setStep(1); return }
     if (step === 1 || step === 10) { setStep(0); return }
@@ -124,6 +145,11 @@ export default function NavigatorPage() {
       const stName = states.find(s => s.id === selectedStateId)?.name || 'State'
       const distName = districts.find(d => d.id === selectedDistrictId)?.name || 'District'
       text = `${stName} › ${distName} › Select Taluk`
+    }
+    if (step === 4) {
+      const distName = districts.find(d => d.id === selectedDistrictId)?.name || 'District'
+      const talukName = taluks.find(t => t.id === selectedTalukId)?.name || 'Taluk'
+      text = `${distName} › ${talukName} › Select Village`
     }
     if (step === 10) text = 'Overseas › Select Country'
     return <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>{text}</span>
@@ -226,7 +252,7 @@ export default function NavigatorPage() {
               <div className="map-selection-icon"><img src="/tamil-nadu.png" alt="Taluk" /></div>
               <h2 className="map-selection-title">Select Taluk</h2>
               <p className="map-selection-subtitle">
-                {districts.find(d => d.id === selectedDistrictId)?.name || 'District'} • Choose taluk to {isView ? 'explore parcel registry' : 'manage records'}
+                {districts.find(d => d.id === selectedDistrictId)?.name || 'District'} • Choose taluk to {isView ? 'view villages' : 'manage records'}
               </p>
             </div>
             <div className="selection-dropdown-wrapper">
@@ -241,8 +267,35 @@ export default function NavigatorPage() {
                 </select>
               )}
             </div>
-            <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '0.85rem', fontWeight: '600' }} onClick={() => handleNavigate(selectedTalukId)} disabled={!selectedTalukId || displayTaluks.length === 0}>
-              {isView ? 'Explore Taluk Parcels →' : 'Manage Taluk Records →'}
+            <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '0.85rem', fontWeight: '600' }} onClick={handleTalukContinue} disabled={!selectedTalukId || displayTaluks.length === 0 || loadingRegions}>
+              {loadingRegions ? 'Loading...' : isView ? 'Continue to Village →' : 'Manage Taluk Records →'}
+            </button>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="map-selection-card">
+            <div className="map-selection-header">
+              <div className="map-selection-icon"><img src="/tamil-nadu.png" alt="Village" /></div>
+              <h2 className="map-selection-title">Select Village</h2>
+              <p className="map-selection-subtitle">
+                {taluks.find(t => t.id === selectedTalukId)?.name || 'Taluk'} • Choose village to explore parcel registry
+              </p>
+            </div>
+            <div className="selection-dropdown-wrapper">
+              <label className="form-label" style={{ marginBottom: '0.5rem', fontWeight: '600' }}>Village</label>
+              {villages.length === 0 ? (
+                 <p style={{ color: 'var(--color-text-muted)' }}>No villages available in this taluk.</p>
+              ) : (
+                <select className="selection-select" value={selectedVillageId} onChange={e => setSelectedVillageId(e.target.value)}>
+                  {villages.map(v => (
+                    <option key={v.id} value={v.id}>{v.name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '0.85rem', fontWeight: '600' }} onClick={() => handleNavigate(selectedVillageId)} disabled={!selectedVillageId || villages.length === 0}>
+              Explore Village Parcels →
             </button>
           </div>
         )}

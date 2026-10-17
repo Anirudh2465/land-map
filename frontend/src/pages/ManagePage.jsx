@@ -494,7 +494,7 @@ export default function ManagePage() {
                   {talukNode?.name || 'Taluk'} — Villages
                 </h1>
                 <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.9rem', marginTop: '0.35rem', fontWeight: '500' }}>
-                  {villages.length} village{villages.length !== 1 ? 's' : ''} registered in this taluk
+                  Manage villages and their land parcels
                 </p>
               </div>
               <button
@@ -638,7 +638,7 @@ export default function ManagePage() {
                   {selectedVillage.name} — Land Parcels
                 </h1>
                 <p style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: '0.9rem', marginTop: '0.35rem', fontWeight: '500' }}>
-                  {plots.length} {plots.length === 1 ? 'parcel' : 'parcels'} registered in village
+                  Manage registered land parcels and records
                 </p>
               </div>
           <button
