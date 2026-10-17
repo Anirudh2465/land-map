@@ -8,9 +8,9 @@
  */
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getCountries, getChildren } from '../api/geo'
+import { getCountries, getChildren, createVillage } from '../api/geo'
 import Header from '../components/Header'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Plus, X } from 'lucide-react'
 
 export default function NavigatorPage() {
   const { mode } = useParams() // "view" | "manage"
@@ -31,6 +31,12 @@ export default function NavigatorPage() {
   const [selectedVillageId, setSelectedVillageId] = useState('')
   
   const [loadingRegions, setLoadingRegions] = useState(false)
+
+  // Add Village Modal States
+  const [showAddVillage, setShowAddVillage] = useState(false)
+  const [newVillageName, setNewVillageName] = useState('')
+  const [addVillageError, setAddVillageError] = useState('')
+  const [addVillageLoading, setAddVillageLoading] = useState(false)
 
   const isView = mode === 'view'
   const modeLabel = isView ? 'View Land Parcels' : 'Update Records'
@@ -118,21 +124,35 @@ export default function NavigatorPage() {
     }
   }
 
-  // Fetch villages when Taluk is confirmed (in View mode)
+  // Fetch villages when Taluk is confirmed (both View and Manage modes proceed to Step 4)
   async function handleTalukContinue() {
     if (!selectedTalukId) return
-    if (!isView) {
-      handleNavigate(selectedTalukId)
-      return
-    }
     setLoadingRegions(true)
     try {
       const vl = await getChildren(selectedTalukId)
       setVillages(vl)
       if (vl.length > 0) setSelectedVillageId(vl[0].id)
+      else setSelectedVillageId('')
       setStep(4)
     } finally {
       setLoadingRegions(false)
+    }
+  }
+
+  async function handleAddVillage() {
+    if (!newVillageName.trim() || !selectedTalukId) return
+    setAddVillageLoading(true)
+    setAddVillageError('')
+    try {
+      const village = await createVillage(selectedTalukId, newVillageName.trim())
+      setVillages(prev => [...prev, village].sort((a, b) => a.name.localeCompare(b.name)))
+      setSelectedVillageId(village.id)
+      setNewVillageName('')
+      setShowAddVillage(false)
+    } catch (err) {
+      setAddVillageError(err.response?.data?.detail || 'Failed to create village.')
+    } finally {
+      setAddVillageLoading(false)
     }
   }
 
@@ -294,7 +314,7 @@ export default function NavigatorPage() {
               )}
             </div>
             <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '0.85rem', fontWeight: '600' }} onClick={handleTalukContinue} disabled={!selectedTalukId || displayTaluks.length === 0 || loadingRegions}>
-              {loadingRegions ? 'Loading...' : isView ? 'Continue to Village →' : 'Manage Taluk Records →'}
+              {loadingRegions ? 'Loading...' : 'Continue to Village →'}
             </button>
           </div>
         )}
@@ -305,11 +325,21 @@ export default function NavigatorPage() {
               <div className="map-selection-icon"><img src="/tamil-nadu.png" alt="Village" /></div>
               <h2 className="map-selection-title">Select Village</h2>
               <p className="map-selection-subtitle">
-                {taluks.find(t => t.id === selectedTalukId)?.name || 'Taluk'} • Choose village to explore parcel registry
+                {taluks.find(t => t.id === selectedTalukId)?.name || 'Taluk'} • Choose village to {isView ? 'explore parcel registry' : 'manage records'}
               </p>
             </div>
             <div className="selection-dropdown-wrapper">
-              <label className="form-label" style={{ marginBottom: '0.5rem', fontWeight: '600' }}>Village</label>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                <label className="form-label" style={{ margin: 0, fontWeight: '600' }}>Village</label>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', borderRadius: '6px' }}
+                  onClick={() => { setShowAddVillage(true); setAddVillageError(''); setNewVillageName('') }}
+                >
+                  <Plus size={13} /> Add Village
+                </button>
+              </div>
               {villages.length === 0 ? (
                  <p style={{ color: 'var(--color-text-muted)' }}>No villages available in this taluk.</p>
               ) : (
@@ -321,7 +351,7 @@ export default function NavigatorPage() {
               )}
             </div>
             <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '0.85rem', fontWeight: '600' }} onClick={() => handleNavigate(selectedVillageId)} disabled={!selectedVillageId || villages.length === 0}>
-              Explore Village Parcels →
+              {isView ? 'Explore Village Parcels →' : 'Manage Village Records →'}
             </button>
           </div>
         )}
@@ -350,8 +380,39 @@ export default function NavigatorPage() {
             </button>
           </div>
         )}
-
       </div>
+
+      {/* Add Village Modal */}
+      {showAddVillage && (
+        <div className="modal-overlay" onClick={() => setShowAddVillage(false)}>
+          <div className="modal" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">Add Village</span>
+              <button className="btn-outline" style={{ border: 'none', padding: '0.2rem 0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setShowAddVillage(false)}><X size={20} /></button>
+            </div>
+            <div className="modal-body">
+              {addVillageError && <div className="alert alert-error" style={{ marginBottom: '1rem' }}>{addVillageError}</div>}
+              <div className="form-group">
+                <label className="form-label">Village Name *</label>
+                <input
+                  className="form-input"
+                  placeholder="e.g. Bogampatti"
+                  value={newVillageName}
+                  onChange={e => setNewVillageName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleAddVillage() }}
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-outline" onClick={() => setShowAddVillage(false)} disabled={addVillageLoading}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleAddVillage} disabled={!newVillageName.trim() || addVillageLoading}>
+                {addVillageLoading ? 'Creating...' : 'Create Village'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
