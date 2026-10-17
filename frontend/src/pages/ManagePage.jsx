@@ -17,16 +17,17 @@ import Header from '../components/Header'
 import { Map, Info, FileText, Upload, Check, X, Pencil, RefreshCw, Trash2, Plus, ArrowLeft, ChevronRight } from 'lucide-react'
 
 const DOC_CATEGORIES = {
-  land_documents: ['DEED', 'PARENT_DOCUMENT', 'FMB', 'PATTA', 'EC_DETAILS'],
+  land_documents: ['DEED', 'PARENT_DOCUMENT', 'FMB', 'PATTA', 'EC_DETAILS', 'ADANGAL', 'A_REGISTER'],
+  land_official_details: ['PROPERTY_TAX', 'AERIAL_PHOTO', 'DISPUTE_DETAILS', 'APPROVED_PLAN'],
   buildup_details: ['BUILDING_PLAN', 'PLAN_APPROVAL', 'BUILDING_PERMIT'],
-  others: ['PROPERTY_TAX', 'AERIAL_PHOTO', 'DISPUTE_DETAILS', 'ADANGAL', 'A_REGISTER', 'APPROVED_PLAN'],
-  source_files: ['SOURCE_KML', 'SHAPEFILE']
+  source_files: ['SOURCE_KML', 'SHAPEFILE'],
+  others: ['PROPERTY_TAX', 'AERIAL_PHOTO', 'DISPUTE_DETAILS', 'APPROVED_PLAN']
 }
 
 const DOC_TITLES = {
   DEED: 'Deed Document',
   PARENT_DOCUMENT: 'Parent Document',
-  FMB: 'FMB Sketch',
+  FMB: 'TSLR Sketch',
   PATTA: 'Patta / Chitta Details',
   EC_DETAILS: 'EC Details',
   BUILDING_PLAN: 'Building Plan',
@@ -932,8 +933,8 @@ export default function ManagePage() {
                           onChange={e => setDocSubcategory(e.target.value)}
                         >
                           <option value="land_documents">Land Documents</option>
+                          <option value="land_official_details">Land Official Details</option>
                           <option value="buildup_details">Build-up Details</option>
-                          <option value="others">Others</option>
                           <option value="source_files">Source Files</option>
                         </select>
                       </div>
@@ -946,9 +947,23 @@ export default function ManagePage() {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                               <FileField label="Deed Document" accept=".pdf" onChange={setDeedFile} files={deedFile} />
                               <FileField label="Parent Document" accept=".pdf" onChange={setParentDocumentFile} files={parentDocumentFile} />
-                              <FileField label="FMB Sketch" accept=".pdf" onChange={setFmbFile} files={fmbFile} />
+                              <FileField label="TSLR Sketch" accept=".pdf" onChange={setFmbFile} files={fmbFile} />
                               <FileField label="Patta / Chitta Details" accept=".pdf" onChange={setPattaFile} files={pattaFile} />
                               <FileField label="EC Details" accept=".pdf" onChange={setEcDetailsFile} files={ecDetailsFile} />
+                              <FileField label="Adangal" accept=".pdf" onChange={setAdangalFile} files={adangalFile} />
+                              <FileField label="A-Register" accept=".pdf" onChange={setARegisterFile} files={aRegisterFile} />
+                            </div>
+                          </div>
+                        )}
+
+                        {(docSubcategory === 'land_official_details' || docSubcategory === 'others') && (
+                          <div>
+                            <h4 className="doc-section-title">Land Official Details</h4>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                              <FileField label="Property Tax" accept=".pdf" onChange={setPropertyTaxFile} files={propertyTaxFile} />
+                              <FileField label="Aerial/Field Photos" accept=".pdf" onChange={setAerialPhotoFile} files={aerialPhotoFile} />
+                              <FileField label="Dispute Details" accept=".pdf" onChange={setDisputeDetailsFile} files={disputeDetailsFile} />
+                              <FileField label="Approved Industry / Residential Plan" accept=".pdf" onChange={setApprovedPlanFile} files={approvedPlanFile} />
                             </div>
                           </div>
                         )}
@@ -960,20 +975,6 @@ export default function ManagePage() {
                               <FileField label="Building Plan" accept=".pdf" onChange={setBuildingPlanFile} files={buildingPlanFile} />
                               <FileField label="Plan Approval Letter" accept=".pdf" onChange={setPlanApprovalLetterFile} files={planApprovalLetterFile} />
                               <FileField label="Building Permit Letter" accept=".pdf" onChange={setBuildingPermitLetterFile} files={buildingPermitLetterFile} />
-                            </div>
-                          </div>
-                        )}
-
-                        {docSubcategory === 'others' && (
-                          <div>
-                            <h4 className="doc-section-title">Others</h4>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                              <FileField label="Property Tax" accept=".pdf" onChange={setPropertyTaxFile} files={propertyTaxFile} />
-                              <FileField label="Aerial/Field Photos" accept=".pdf" onChange={setAerialPhotoFile} files={aerialPhotoFile} />
-                              <FileField label="Dispute Details" accept=".pdf" onChange={setDisputeDetailsFile} files={disputeDetailsFile} />
-                              <FileField label="Adangal" accept=".pdf" onChange={setAdangalFile} files={adangalFile} />
-                              <FileField label="A-Register" accept=".pdf" onChange={setARegisterFile} files={aRegisterFile} />
-                              <FileField label="Approved Industry / Residential Plan" accept=".pdf" onChange={setApprovedPlanFile} files={approvedPlanFile} />
                             </div>
                           </div>
                         )}

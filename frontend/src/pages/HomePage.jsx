@@ -165,7 +165,7 @@ export default function HomePage() {
                 Update Records
               </h2>
               <p className="action-card-desc">
-                Administrative portal to manage parcel records, upload KML geometries, and attach FMB/Patta/Deed files.
+                Administrative portal to manage parcel records, upload KML geometries, and attach TSLR Sketch/Patta/Deed files.
               </p>
               <div className="action-card-footer">
                 <span>Manage Parcel Database</span>

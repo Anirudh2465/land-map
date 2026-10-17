@@ -49,16 +49,17 @@ function convertAreaValue(val, fromUnit, toUnit) {
 }
 
 const DOC_CATEGORIES = {
-  land_documents: ['DEED', 'PARENT_DOCUMENT', 'FMB', 'PATTA', 'EC_DETAILS'],
+  land_documents: ['DEED', 'PARENT_DOCUMENT', 'FMB', 'PATTA', 'EC_DETAILS', 'ADANGAL', 'A_REGISTER'],
+  land_official_details: ['PROPERTY_TAX', 'AERIAL_PHOTO', 'DISPUTE_DETAILS', 'APPROVED_PLAN'],
   buildup_details: ['BUILDING_PLAN', 'PLAN_APPROVAL', 'BUILDING_PERMIT'],
-  others: ['PROPERTY_TAX', 'AERIAL_PHOTO', 'DISPUTE_DETAILS', 'ADANGAL', 'A_REGISTER', 'APPROVED_PLAN'],
-  source_files: ['SOURCE_KML', 'KML', 'SHAPEFILE']
+  source_files: ['SOURCE_KML', 'KML', 'SHAPEFILE'],
+  others: ['PROPERTY_TAX', 'AERIAL_PHOTO', 'DISPUTE_DETAILS', 'APPROVED_PLAN']
 }
 
 const DOC_TITLES = {
   DEED: 'Deed Document',
   PARENT_DOCUMENT: 'Parent Document',
-  FMB: 'FMB Sketch',
+  FMB: 'TSLR Sketch',
   PATTA: 'Patta / Chitta Details',
   EC_DETAILS: 'EC Details',
   BUILDING_PLAN: 'Building Plan',
