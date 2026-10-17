@@ -2,3 +2,5 @@
 .env.local.verified
 .env.cloud.verified
 *.pdf
+__pycache__/
+*.pyc

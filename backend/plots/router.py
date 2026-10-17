@@ -101,16 +101,35 @@ async def _reverse_geocode(lat: float, lon: float) -> Optional[str]:
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
 @router.get("", response_model=List[PlotListItem])
-def list_plots(district_id: UUID, db: Session = Depends(get_db)):
-    """List all ACTIVE plots in a district."""
-    node = db.query(GeoNode).filter(GeoNode.id == district_id).first()
+def list_plots(geo_node_id: Optional[UUID] = None, district_id: Optional[UUID] = None, db: Session = Depends(get_db)):
+    """List all ACTIVE plots in a geo node (village, district, etc). Accepts geo_node_id or legacy district_id."""
+    node_id = geo_node_id or district_id
+    if not node_id:
+        raise HTTPException(status_code=400, detail="geo_node_id or district_id is required")
+    node = db.query(GeoNode).filter(GeoNode.id == node_id).first()
     if not node:
-        raise HTTPException(status_code=404, detail="District not found")
-    plots = (
-        db.query(Plot)
-        .filter(Plot.geo_node_id == district_id, Plot.status == "ACTIVE")
-        .all()
-    )
+        raise HTTPException(status_code=404, detail="GeoNode not found")
+    if node.level == 'TALUK':
+        village_ids = db.query(GeoNode.id).filter(GeoNode.parent_id == node_id)
+        plots = (
+            db.query(Plot)
+            .filter((Plot.geo_node_id == node_id) | (Plot.geo_node_id.in_(village_ids)), Plot.status == "ACTIVE")
+            .all()
+        )
+    elif node.level == 'DISTRICT':
+        taluk_ids = db.query(GeoNode.id).filter(GeoNode.parent_id == node_id)
+        village_ids = db.query(GeoNode.id).filter(GeoNode.parent_id.in_(taluk_ids))
+        plots = (
+            db.query(Plot)
+            .filter((Plot.geo_node_id == node_id) | (Plot.geo_node_id.in_(taluk_ids)) | (Plot.geo_node_id.in_(village_ids)), Plot.status == "ACTIVE")
+            .all()
+        )
+    else:
+        plots = (
+            db.query(Plot)
+            .filter(Plot.geo_node_id == node_id, Plot.status == "ACTIVE")
+            .all()
+        )
     return [_plot_to_list_item(p) for p in plots]
 
 
@@ -183,21 +202,23 @@ async def create_plot(
     current_user=Depends(require_admin),
 ):
     """Create a new land parcel. Admin only."""
-    # Validate district exists
-    node = db.query(GeoNode).filter(GeoNode.id == district_id).first()
+    # Accept village_id or legacy district_id
+    geo_node_id = district_id
+    # Validate geo node exists
+    node = db.query(GeoNode).filter(GeoNode.id == geo_node_id).first()
     if not node:
-        raise HTTPException(status_code=404, detail="District not found")
+        raise HTTPException(status_code=404, detail="GeoNode (village/district) not found")
 
-    # Check land_id uniqueness within district (only for ACTIVE plots)
+    # Check land_id uniqueness within geo node (only for ACTIVE plots)
     existing = db.query(Plot).filter(
-        Plot.geo_node_id == district_id,
+        Plot.geo_node_id == geo_node_id,
         Plot.plot_number == land_id,
         Plot.status == "ACTIVE"
     ).first()
     if existing:
         raise HTTPException(
             status_code=400,
-            detail=f"LandID '{land_id}' already exists in this district."
+            detail=f"LandID '{land_id}' already exists in this area."
         )
 
     plot_id = uuid.uuid4()
@@ -243,7 +264,7 @@ async def create_plot(
     # ── Create plot row ───────────────────────────────────────────────────
     plot = Plot(
         id=plot_id,
-        geo_node_id=district_id,
+        geo_node_id=geo_node_id,
         property_name=land_name,
         plot_number=land_id,
         area_value=final_area_value,

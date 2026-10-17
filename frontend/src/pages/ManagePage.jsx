@@ -10,10 +10,11 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getPlots, getPlot, createPlot, updatePlot, deletePlot, extractKml } from '../api/plots'
+import { getChildren, createVillage, renameVillage, deleteVillage, getNode } from '../api/geo'
 import { deleteDocument } from '../api/documents'
 import { useAuth } from '../context/AuthContext'
 import Header from '../components/Header'
-import { Map, Info, FileText, Upload, Check, X, Pencil, RefreshCw, Trash2 } from 'lucide-react'
+import { Map, Info, FileText, Upload, Check, X, Pencil, RefreshCw, Trash2, Plus, ArrowLeft, ChevronRight } from 'lucide-react'
 
 const DOC_CATEGORIES = {
   land_documents: ['DEED', 'PARENT_DOCUMENT', 'FMB', 'PATTA', 'EC_DETAILS'],
@@ -75,9 +76,25 @@ function FileField({ label, name, accept, onChange, files }) {
 }
 
 export default function ManagePage() {
-  const { districtId } = useParams()
+  const { districtId: talukId } = useParams()  // receives talukId (URL param kept as districtId for compat)
   const navigate = useNavigate()
   const { user } = useAuth()
+
+  // ── Village layer state ────────────────────────────────────────────────
+  const [talukNode, setTalukNode] = useState(null)
+  const [villages, setVillages] = useState([])
+  const [selectedVillage, setSelectedVillage] = useState(null)  // null = showing village list
+  const [loadingVillages, setLoadingVillages] = useState(true)
+  const [newVillageName, setNewVillageName] = useState('')
+  const [showAddVillage, setShowAddVillage] = useState(false)
+  const [addVillageError, setAddVillageError] = useState('')
+  const [addVillageLoading, setAddVillageLoading] = useState(false)
+  const [renameVillageId, setRenameVillageId] = useState(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [renameError, setRenameError] = useState('')
+  const [renameLoading, setRenameLoading] = useState(false)
+  const [deleteVillageConfirm, setDeleteVillageConfirm] = useState(null)  // village node
+  const [deletingVillage, setDeletingVillage] = useState(false)
 
   const [plots, setPlots] = useState([])
   const [loading, setLoading] = useState(true)
@@ -138,17 +155,32 @@ export default function ManagePage() {
     }
   }, [user, navigate])
 
+  // Load taluk info and its villages
+  useEffect(() => {
+    if (!talukId) return
+    setLoadingVillages(true)
+    Promise.all([
+      getNode(talukId),
+      getChildren(talukId)
+    ]).then(([node, kids]) => {
+      setTalukNode(node)
+      setVillages(kids)
+    }).catch(() => {})
+    .finally(() => setLoadingVillages(false))
+  }, [talukId])
+
   function loadPlots() {
+    if (!selectedVillage) return
     setLoading(true)
-    getPlots(districtId)
+    getPlots(selectedVillage.id)
       .then(setPlots)
       .catch(err => setError(err.response?.data?.detail || 'Failed to load parcels.'))
       .finally(() => setLoading(false))
   }
 
   useEffect(() => {
-    if (districtId) loadPlots()
-  }, [districtId])
+    if (selectedVillage) loadPlots()
+  }, [selectedVillage])
 
   function handleFormChange(field, value) {
     setForm(f => ({ ...f, [field]: value }))
@@ -275,7 +307,7 @@ export default function ManagePage() {
     try {
       const fd = new FormData()
       if (!editingPlotId) {
-        fd.append('district_id', districtId)
+        fd.append('district_id', selectedVillage.id)
       }
       fd.append('land_id', form.land_id.trim())
       fd.append('land_name', form.land_name.trim())
@@ -346,6 +378,58 @@ export default function ManagePage() {
     }
   }
 
+  // ── Village CRUD handlers ──────────────────────────────────────────────
+
+  async function handleAddVillage() {
+    if (!newVillageName.trim()) return
+    setAddVillageLoading(true)
+    setAddVillageError('')
+    try {
+      const village = await createVillage(talukId, newVillageName.trim())
+      setVillages(prev => [...prev, village].sort((a, b) => a.name.localeCompare(b.name)))
+      setNewVillageName('')
+      setShowAddVillage(false)
+    } catch (err) {
+      setAddVillageError(err.response?.data?.detail || 'Failed to create village.')
+    } finally {
+      setAddVillageLoading(false)
+    }
+  }
+
+  function startRename(village) {
+    setRenameVillageId(village.id)
+    setRenameValue(village.name)
+    setRenameError('')
+  }
+
+  async function handleRenameVillage() {
+    if (!renameValue.trim() || !renameVillageId) return
+    setRenameLoading(true)
+    setRenameError('')
+    try {
+      const updated = await renameVillage(renameVillageId, renameValue.trim())
+      setVillages(prev => prev.map(v => v.id === renameVillageId ? { ...v, name: updated.name } : v))
+      setRenameVillageId(null)
+    } catch (err) {
+      setRenameError(err.response?.data?.detail || 'Failed to rename village.')
+    } finally {
+      setRenameLoading(false)
+    }
+  }
+
+  async function handleDeleteVillage(village) {
+    setDeletingVillage(true)
+    try {
+      await deleteVillage(village.id)
+      setVillages(prev => prev.filter(v => v.id !== village.id))
+      setDeleteVillageConfirm(null)
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to delete village.')
+    } finally {
+      setDeletingVillage(false)
+    }
+  }
+
   return (
     <div className="home-page-container">
       {/* Background image layer with blur and darkening */}
@@ -353,10 +437,10 @@ export default function ManagePage() {
 
       {/* Header */}
       <Header
-        onBack={() => navigate('/navigate/manage')}
+        onBack={selectedVillage ? () => { setSelectedVillage(null); setPlots([]); setError('') } : () => navigate('/navigate/manage')}
         centerContent={
           <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
-            Update Records › Coimbatore
+            {talukNode ? `${talukNode.name} › ${selectedVillage ? selectedVillage.name : 'Villages'}` : 'Update Records'}
           </span>
         }
       />
@@ -380,41 +464,183 @@ export default function ManagePage() {
           <span className="breadcrumb-sep" style={{ color: 'rgba(255, 255, 255, 0.4)' }}>›</span>
           <button
             onClick={() => navigate('/navigate/manage')}
-            style={{
-              background: 'none',
-              border: 'none',
-              padding: 0,
-              color: 'rgba(255, 255, 255, 0.8)',
-              cursor: 'pointer',
-              fontWeight: '500',
-              textDecoration: 'underline'
-            }}
+            style={{ background: 'none', border: 'none', padding: 0, color: 'rgba(255, 255, 255, 0.8)', cursor: 'pointer', fontWeight: '500', textDecoration: 'underline' }}
           >
             Update Records
           </button>
           <span className="breadcrumb-sep" style={{ color: 'rgba(255, 255, 255, 0.4)' }}>›</span>
-          <span style={{ color: '#ffffff', fontWeight: '600' }}>Coimbatore</span>
+          {selectedVillage ? (
+            <>
+              <button
+                onClick={() => { setSelectedVillage(null); setPlots([]); setError('') }}
+                style={{ background: 'none', border: 'none', padding: 0, color: 'rgba(255, 255, 255, 0.8)', cursor: 'pointer', fontWeight: '500', textDecoration: 'underline' }}
+              >
+                {talukNode?.name || 'Taluk'}
+              </button>
+              <span className="breadcrumb-sep" style={{ color: 'rgba(255, 255, 255, 0.4)' }}>›</span>
+              <span style={{ color: '#ffffff', fontWeight: '600' }}>{selectedVillage.name}</span>
+            </>
+          ) : (
+            <span style={{ color: '#ffffff', fontWeight: '600' }}>{talukNode?.name || 'Taluk'}</span>
+          )}
         </nav>
 
-        {/* Page Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.75rem' }}>
-          <div>
-            <h1
-              style={{
-                fontSize: '1.8rem',
-                fontWeight: '800',
-                color: '#ffffff',
-                textShadow: '0 2px 10px rgba(0, 0, 0, 0.5)',
-                letterSpacing: '-0.02em',
-                margin: 0
-              }}
-            >
-              Coimbatore — Land Parcels
-            </h1>
-            <p style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: '0.9rem', marginTop: '0.35rem', fontWeight: '500' }}>
-              {plots.length} {plots.length === 1 ? 'parcel' : 'parcels'} registered in district database
-            </p>
-          </div>
+        {/* ── Village List View ──────────────────────────────────────────── */}
+        {!selectedVillage && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.75rem' }}>
+              <div>
+                <h1 style={{ fontSize: '1.8rem', fontWeight: '800', color: '#ffffff', textShadow: '0 2px 10px rgba(0,0,0,0.5)', letterSpacing: '-0.02em', margin: 0 }}>
+                  {talukNode?.name || 'Taluk'} — Villages
+                </h1>
+                <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.9rem', marginTop: '0.35rem', fontWeight: '500' }}>
+                  {villages.length} village{villages.length !== 1 ? 's' : ''} registered in this taluk
+                </p>
+              </div>
+              <button
+                className="btn btn-primary"
+                style={{ padding: '0.75rem 1.25rem', fontSize: '0.925rem', fontWeight: '600', boxShadow: '0 4px 16px rgba(37,99,235,0.45)', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                onClick={() => { setShowAddVillage(true); setAddVillageError(''); setNewVillageName('') }}
+              >
+                <Plus size={16} /> Add Village
+              </button>
+            </div>
+
+            {loadingVillages ? (
+              <div className="loading-center" style={{ padding: '4rem', color: '#ffffff' }}><span className="spinner" /></div>
+            ) : villages.length === 0 ? (
+              <div style={{ background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(16px)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.4)', boxShadow: '0 20px 40px -10px rgba(0,0,0,0.35)', textAlign: 'center', color: 'var(--color-text-muted)', padding: '3.5rem 2rem' }}>
+                <p style={{ fontSize: '1.1rem', fontWeight: '600', color: '#0f172a' }}>No villages added yet.</p>
+                <p style={{ fontSize: '0.9rem', marginTop: '0.5rem', color: '#64748b' }}>Click <strong style={{ color: 'var(--color-primary)' }}>+ Add Village</strong> to create the first village.</p>
+              </div>
+            ) : (
+              <div style={{ background: 'rgba(255,255,255,0.96)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.5)', boxShadow: '0 25px 60px -15px rgba(0,0,0,0.4)', overflow: 'hidden' }}>
+                {villages.map((village, idx) => (
+                  <div key={village.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.5rem', borderBottom: idx < villages.length - 1 ? '1px solid #e2e8f0' : 'none', transition: 'background 0.15s' }}>
+                    {renameVillageId === village.id ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, marginRight: '1rem' }}>
+                        <input
+                          className="form-input"
+                          value={renameValue}
+                          onChange={e => setRenameValue(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') handleRenameVillage(); if (e.key === 'Escape') setRenameVillageId(null) }}
+                          autoFocus
+                          style={{ flex: 1, padding: '0.4rem 0.65rem', fontSize: '0.9rem' }}
+                        />
+                        {renameError && <span style={{ color: '#dc2626', fontSize: '0.8rem' }}>{renameError}</span>}
+                        <button className="btn btn-primary btn-sm" onClick={handleRenameVillage} disabled={renameLoading}>
+                          {renameLoading ? 'Saving...' : 'Save'}
+                        </button>
+                        <button className="btn btn-outline btn-sm" onClick={() => setRenameVillageId(null)}>Cancel</button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flex: 1, minWidth: 0 }}>
+                        <span style={{ fontWeight: '600', fontSize: '1rem', color: '#0f172a' }}>{village.name}</span>
+                      </div>
+                    )}
+                    <div style={{ display: 'inline-flex', gap: '0.5rem', flexShrink: 0 }}>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+                        onClick={() => { setSelectedVillage(village); setPlots([]); setError(''); setLoading(true) }}
+                      >
+                        Manage Parcels <ChevronRight size={14} />
+                      </button>
+                      <button
+                        className="btn btn-outline btn-sm"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+                        onClick={() => startRename(village)}
+                      >
+                        <Pencil size={13} /> Rename
+                      </button>
+                      <button
+                        className="btn btn-danger btn-sm"
+                        onClick={() => setDeleteVillageConfirm(village)}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add Village Modal */}
+            {showAddVillage && (
+              <div className="modal-overlay" onClick={() => setShowAddVillage(false)}>
+                <div className="modal" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+                  <div className="modal-header">
+                    <span className="modal-title">Add Village</span>
+                    <button className="btn-outline" style={{ border: 'none', padding: '0.2rem 0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setShowAddVillage(false)}><X size={20} /></button>
+                  </div>
+                  <div className="modal-body">
+                    {addVillageError && <div className="alert alert-error" style={{ marginBottom: '1rem' }}>{addVillageError}</div>}
+                    <div className="form-group">
+                      <label className="form-label">Village Name *</label>
+                      <input
+                        className="form-input"
+                        placeholder="e.g. Bogampatti"
+                        value={newVillageName}
+                        onChange={e => setNewVillageName(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') handleAddVillage() }}
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button className="btn btn-outline" onClick={() => setShowAddVillage(false)} disabled={addVillageLoading}>Cancel</button>
+                    <button className="btn btn-primary" onClick={handleAddVillage} disabled={!newVillageName.trim() || addVillageLoading}>
+                      {addVillageLoading ? 'Creating...' : 'Create Village'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Delete Village Confirm Modal */}
+            {deleteVillageConfirm && (
+              <div className="modal-overlay" onClick={() => setDeleteVillageConfirm(null)}>
+                <div className="modal" style={{ maxWidth: '420px' }} onClick={e => e.stopPropagation()}>
+                  <div className="modal-header"><span className="modal-title">Delete Village</span></div>
+                  <div className="modal-body">
+                    <p>Delete <strong>{deleteVillageConfirm.name}</strong>? This will permanently delete all parcels and their documents in this village.</p>
+                    <p style={{ color: '#dc2626', fontWeight: '600', marginTop: '0.5rem', fontSize: '0.875rem' }}>This action cannot be undone.</p>
+                  </div>
+                  <div className="modal-footer">
+                    <button className="btn btn-outline" onClick={() => setDeleteVillageConfirm(null)} disabled={deletingVillage}>Cancel</button>
+                    <button className="btn btn-danger" onClick={() => handleDeleteVillage(deleteVillageConfirm)} disabled={deletingVillage}>
+                      {deletingVillage ? 'Deleting...' : 'Delete Village'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── Parcel List View (after village selected) ──────────────────── */}
+        {selectedVillage && (
+          <>
+
+            {/* Page Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.75rem' }}>
+              <div>
+                <h1
+                  style={{
+                    fontSize: '1.8rem',
+                    fontWeight: '800',
+                    color: '#ffffff',
+                    textShadow: '0 2px 10px rgba(0, 0, 0, 0.5)',
+                    letterSpacing: '-0.02em',
+                    margin: 0
+                  }}
+                >
+                  {selectedVillage.name} — Land Parcels
+                </h1>
+                <p style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: '0.9rem', marginTop: '0.35rem', fontWeight: '500' }}>
+                  {plots.length} {plots.length === 1 ? 'parcel' : 'parcels'} registered in village
+                </p>
+              </div>
           <button
             id="btn-add-parcel"
             className="btn btn-primary"
@@ -856,6 +1082,8 @@ export default function ManagePage() {
               </div>
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
     </div>
