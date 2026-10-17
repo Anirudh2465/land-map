@@ -30,7 +30,7 @@ import { getDocumentUrl } from '../api/documents'
 import { getNodeByName, getCountries, getChildren, getNode } from '../api/geo'
 import { geocodeAddress, getRoute, getNearbyPlaces } from '../api/routing'
 import Header from '../components/Header'
-import { Search, ChevronDown, ChevronUp, X, FileText, Download, Eye, ChevronRight, MapPin, Navigation, ArrowLeftRight, Map as MapIcon, Clock, Car, Bike, Footprints, Pin, PinOff, Folder, Ruler } from 'lucide-react'
+import { Search, ChevronDown, ChevronUp, X, FileText, Download, Eye, ChevronRight, MapPin, Navigation, ArrowLeftRight, Map as MapIcon, Clock, Car, Bike, Footprints, Pin, PinOff, Folder, FolderOpen, Ruler } from 'lucide-react'
 
 // Unit conversion constants
 const AREA_UNITS = ['sqm', 'sqft', 'acres', 'hectares']
@@ -48,31 +48,54 @@ function convertAreaValue(val, fromUnit, toUnit) {
   return Number.isInteger(converted) ? converted.toLocaleString() : parseFloat(converted.toFixed(4)).toLocaleString()
 }
 
-const DOC_CATEGORIES = {
-  land_documents: ['DEED', 'PARENT_DOCUMENT', 'FMB', 'PATTA', 'EC_DETAILS', 'ADANGAL', 'A_REGISTER'],
-  land_official_details: ['PROPERTY_TAX', 'AERIAL_PHOTO', 'DISPUTE_DETAILS', 'APPROVED_PLAN'],
-  buildup_details: ['BUILDING_PLAN', 'PLAN_APPROVAL', 'BUILDING_PERMIT'],
-  source_files: ['SOURCE_KML', 'KML', 'SHAPEFILE'],
-  others: ['PROPERTY_TAX', 'AERIAL_PHOTO', 'DISPUTE_DETAILS', 'APPROVED_PLAN']
-}
+const DOC_CATEGORY_CONFIG = [
+  {
+    key: 'land_documents',
+    title: 'Land Documents',
+    types: ['DEED', 'PARENT_DOCUMENT', 'FMB', 'FMB_SKETCH', 'TSLR_SKETCH', 'PATTA', 'EC_DETAILS', 'ADANGAL', 'A_REGISTER'],
+    color: '#2563eb'
+  },
+  {
+    key: 'land_official_details',
+    title: 'Land Official Details',
+    types: ['PROPERTY_TAX', 'AERIAL_PHOTO', 'DISPUTE_DETAILS', 'APPROVED_PLAN'],
+    color: '#0891b2'
+  },
+  {
+    key: 'buildup_details',
+    title: 'Build-up Details',
+    types: ['BUILDING_PLAN', 'PLAN_APPROVAL', 'PLAN_APPROVAL_LETTER', 'BUILDING_PERMIT', 'BUILDING_PERMIT_LETTER'],
+    color: '#d97706'
+  },
+  {
+    key: 'source_files',
+    title: 'Source & Spatial Files',
+    types: ['SOURCE_KML', 'KML', 'SHAPEFILE'],
+    color: '#059669'
+  }
+]
 
 const DOC_TITLES = {
   DEED: 'Deed Document',
   PARENT_DOCUMENT: 'Parent Document',
   FMB: 'TSLR Sketch',
+  FMB_SKETCH: 'TSLR Sketch',
+  TSLR_SKETCH: 'TSLR Sketch',
   PATTA: 'Patta / Chitta Details',
   EC_DETAILS: 'EC Details',
   BUILDING_PLAN: 'Building Plan',
   PLAN_APPROVAL: 'Plan Approval Letter',
+  PLAN_APPROVAL_LETTER: 'Plan Approval Letter',
   BUILDING_PERMIT: 'Building Permit Letter',
+  BUILDING_PERMIT_LETTER: 'Building Permit Letter',
   PROPERTY_TAX: 'Property Tax',
   AERIAL_PHOTO: 'Aerial / Field Photos',
   DISPUTE_DETAILS: 'Dispute Details',
   ADANGAL: 'Adangal',
   A_REGISTER: 'A-Register',
   APPROVED_PLAN: 'Approved Industry / Residential Plan',
-  SOURCE_KML: 'KML File',
-  KML: 'KML File',
+  SOURCE_KML: 'Boundary KML File',
+  KML: 'Boundary KML File',
   SHAPEFILE: 'Shapefile'
 }
 
@@ -225,7 +248,7 @@ export default function MapPage() {
   const [activeNode, setActiveNode] = useState(null)
   const [pdfModal, setPdfModal] = useState(null) // { url, docType }
   const [pdfLoading, setPdfLoading] = useState(false)
-  const [pinnedPos, setPinnedPos] = useState({ x: 0, y: 0 })
+  const [pinnedPos, setPinnedPos] = useState({ x: 0, y: 0, placement: 'top' })
   const [activeBasemap, setActiveBasemap] = useState('Satellite')
   const [isPinned, setIsPinned] = useState(true)
   const [floatingPos, setFloatingPos] = useState({ x: 80, y: 120 })
@@ -345,11 +368,14 @@ export default function MapPage() {
   const [nearbyRadius, setNearbyRadius] = useState(2000)
   const nearbyLayerRef = useRef(null)
 
-  // Document Folder State
+  // Document Folder State (default open for all active category folders)
   const [expandedFolders, setExpandedFolders] = useState({})
 
-  const toggleFolder = (docType) => {
-    setExpandedFolders(prev => ({ ...prev, [docType]: !prev[docType] }))
+  const toggleFolder = (folderKey) => {
+    setExpandedFolders(prev => ({
+      ...prev,
+      [folderKey]: prev[folderKey] === undefined ? false : !prev[folderKey]
+    }))
   }
 
   const getOriginalFilename = (storageKey, docType, isDefaultKml = false) => {
@@ -964,18 +990,48 @@ export default function MapPage() {
       return null
     }
 
+    const computeCoords = (pt) => {
+      const cardEl = panelRef.current
+      const cardWidth = cardEl ? cardEl.offsetWidth : 380
+      const cardHeight = cardEl ? cardEl.offsetHeight : 520
+      const mapSize = map.getSize()
+      const headerHeight = 70
+      const margin = 16
+
+      // Evaluate available headroom above parcel point
+      const spaceAbove = pt.y - headerHeight
+      const placement = spaceAbove < (cardHeight + 24) ? 'bottom' : 'top'
+
+      // Horizontal clamping: keep card inside [margin, mapSize.x - margin]
+      const halfW = cardWidth / 2
+      const clampedX = Math.round(Math.max(halfW + margin, Math.min(mapSize.x - halfW - margin, pt.x)))
+
+      // Vertical clamping based on placement
+      let clampedY = Math.round(pt.y)
+      if (placement === 'top') {
+        if (clampedY - cardHeight - 16 < headerHeight + margin) {
+          clampedY = headerHeight + margin + cardHeight + 16
+        }
+      } else {
+        if (clampedY + cardHeight + 16 > mapSize.y - margin) {
+          clampedY = mapSize.y - margin - cardHeight - 16
+        }
+      }
+
+      return { clampedX, clampedY, placement }
+    }
+
     const updatePinnedPos = () => {
       const latlng = getCenterLatLng()
       if (!latlng) return
       const pt = map.latLngToContainerPoint(latlng)
-      const x = Math.round(pt.x)
-      const y = Math.round(pt.y)
+      const { clampedX, clampedY, placement } = computeCoords(pt)
       if (panelRef.current) {
         panelRef.current.style.transition = 'none'
-        panelRef.current.style.left = `${x}px`
-        panelRef.current.style.top = `${y}px`
+        panelRef.current.style.left = `${clampedX}px`
+        panelRef.current.style.top = `${clampedY}px`
       }
-      setPinnedPos({ x, y })
+      setPinnedPos({ x: clampedX, y: clampedY, placement })
     }
 
     const handleZoomAnim = (e) => {
@@ -983,22 +1039,24 @@ export default function MapPage() {
       if (!latlng || !panelRef.current) return
       const newLayerPoint = map._latLngToNewLayerPoint(latlng, e.zoom, e.center)
       const pt = map.layerPointToContainerPoint(newLayerPoint)
-      const x = Math.round(pt.x)
-      const y = Math.round(pt.y)
+      const { clampedX, clampedY, placement } = computeCoords(pt)
+
       panelRef.current.style.transition = 'left 0.25s cubic-bezier(0,0,0.25,1), top 0.25s cubic-bezier(0,0,0.25,1)'
-      panelRef.current.style.left = `${x}px`
-      panelRef.current.style.top = `${y}px`
-      setPinnedPos({ x, y })
+      panelRef.current.style.left = `${clampedX}px`
+      panelRef.current.style.top = `${clampedY}px`
+      setPinnedPos({ x: clampedX, y: clampedY, placement })
     }
 
     updatePinnedPos()
     map.on('move zoom zoomend viewreset', updatePinnedPos)
     map.on('zoomanim', handleZoomAnim)
+    window.addEventListener('resize', updatePinnedPos)
 
     const panelEl = panelRef.current
     return () => {
       map.off('move zoom zoomend viewreset', updatePinnedPos)
       map.off('zoomanim', handleZoomAnim)
+      window.removeEventListener('resize', updatePinnedPos)
       if (panelEl) {
         panelEl.style.transition = 'none'
       }
@@ -1484,9 +1542,27 @@ export default function MapPage() {
       map.boxZoom?.disable()
       map.keyboard?.disable()
 
-      map.flyTo(bounds.getCenter(), 18, {
+      // Smart zoom & framing: avoid over-zooming on small parcels
+      let targetZoom = 17.5
+      if (bounds && typeof bounds.isValid === 'function' && bounds.isValid()) {
+        const boundsZoom = map.getBoundsZoom(bounds)
+        // Keep zoom between 16 and 17.5 so small parcels don't over-zoom to pixelated emptiness
+        targetZoom = Math.min(17.5, Math.max(16, boundsZoom - 0.5))
+      }
+
+      const center = bounds.getCenter()
+      const centerPoint = map.project(center, targetZoom)
+
+      // Calculate vertical offset: shift target center upwards in projected coordinates
+      // so the parcel center lands in the lower-middle portion of the screen (~20-25% below center)
+      // leaving ample headroom for the popup card above without overflowing the top header
+      const vOffset = Math.min(200, Math.round(map.getSize().y * 0.22))
+      const targetPoint = centerPoint.subtract([0, vOffset])
+      const targetCenter = map.unproject(targetPoint, targetZoom)
+
+      map.flyTo(targetCenter, targetZoom, {
         animate: true,
-        duration: 1.2
+        duration: 1.1
       })
 
       const onEnd = () => {
@@ -1523,6 +1599,7 @@ export default function MapPage() {
     selectedPlotRef.current = null
     setSelectedPlot(null)
     setIsPinned(true)
+    setPinnedPos({ x: 0, y: 0, placement: 'top' })
     clearRouteAndNearby()
     if (selectedLayerRef.current) {
       selectedLayerRef.current.layer.setStyle(PARCEL_STYLE)
@@ -1920,7 +1997,9 @@ export default function MapPage() {
               position: 'absolute',
               left: `${pinnedPos.x}px`,
               top: `${pinnedPos.y}px`,
-              transform: 'translate(-50%, -100%) translateY(-16px)',
+              transform: pinnedPos.placement === 'bottom'
+                ? 'translate(-50%, 16px)'
+                : 'translate(-50%, -100%) translateY(-16px)',
               zIndex: 1000,
               pointerEvents: 'auto',
             } : {
@@ -2195,73 +2274,149 @@ export default function MapPage() {
                     )
                   }
 
-                  const docsByType = {}
-                  plotDocs.forEach(doc => {
-                    if (!docsByType[doc.doc_type]) docsByType[doc.doc_type] = []
-                    docsByType[doc.doc_type].push(doc)
+                  // Group into configured categories
+                  const categorized = []
+                  const matchedIds = new Set()
+
+                  DOC_CATEGORY_CONFIG.forEach(cat => {
+                    const matchingDocs = plotDocs.filter(d => cat.types.includes(d.doc_type))
+                    if (matchingDocs.length > 0) {
+                      matchingDocs.forEach(d => matchedIds.add(d.id))
+                      categorized.push({
+                        key: cat.key,
+                        title: cat.title,
+                        color: cat.color,
+                        docs: matchingDocs
+                      })
+                    }
                   })
 
+                  // Any documents not in predefined categories
+                  const otherDocs = plotDocs.filter(d => !matchedIds.has(d.id))
+                  if (otherDocs.length > 0) {
+                    categorized.push({
+                      key: 'other_documents',
+                      title: 'Other Documents',
+                      color: '#64748b',
+                      docs: otherDocs
+                    })
+                  }
+
                   return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      {Object.entries(docsByType).map(([docType, docs]) => {
-                        const title = DOC_TITLES[docType] || docType.replace(/_/g, ' ')
-                        if (docs.length === 1) {
-                          const doc = docs[0]
-                          const filename = getOriginalFilename(doc.storage_key, docType, doc.isDefaultKml)
-                          const isNonPdf = docType === 'SOURCE_KML' || docType === 'KML' || docType === 'SHAPEFILE' || (doc.storage_key && !doc.storage_key.toLowerCase().endsWith('.pdf'))
-                          return (
-                            <div key={doc.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.75rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
-                              <span style={{ fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.45rem', color: '#0f172a' }}>
-                                <FileText size={15} style={{ color: 'var(--color-primary)' }} />
-                                <span style={{ textTransform: 'capitalize' }}>{title}</span>
-                              </span>
-                              <div style={{ display: 'flex', gap: '0.35rem' }}>
-                                {!isNonPdf && (
-                                  <button className="btn btn-outline btn-sm" onClick={() => handlePreviewPdf(doc)} disabled={pdfLoading} title={`Preview ${filename}`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px' }}><Eye size={13} /></button>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                      {categorized.map(cat => {
+                        const isExpanded = expandedFolders[cat.key] !== false // Default open
+                        return (
+                          <div
+                            key={cat.key}
+                            style={{
+                              background: '#f8fafc',
+                              borderRadius: '10px',
+                              border: '1px solid var(--color-border)',
+                              overflow: 'hidden',
+                              boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                            }}
+                          >
+                            <div
+                              onClick={() => toggleFolder(cat.key)}
+                              style={{
+                                padding: '0.6rem 0.8rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                cursor: 'pointer',
+                                background: isExpanded ? '#f1f5f9' : '#f8fafc',
+                                borderBottom: isExpanded ? '1px solid #e2e8f0' : 'none',
+                                userSelect: 'none',
+                                transition: 'background 0.15s ease'
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                {isExpanded ? (
+                                  <FolderOpen size={16} style={{ color: cat.color, flexShrink: 0 }} />
+                                ) : (
+                                  <Folder size={16} style={{ color: cat.color, flexShrink: 0 }} />
                                 )}
-                                <button className="btn btn-primary btn-sm" onClick={() => handleDownloadPdf(doc)} title={`Download ${filename}`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px' }}><Download size={13} /></button>
+                                <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#0f172a' }}>
+                                  {cat.title}
+                                </span>
+                                <span style={{
+                                  background: '#e0e7ff',
+                                  color: '#1e40af',
+                                  fontSize: '0.72rem',
+                                  fontWeight: '700',
+                                  padding: '1px 7px',
+                                  borderRadius: '12px',
+                                  border: '1px solid #c7d2fe'
+                                }}>
+                                  {cat.docs.length}
+                                </span>
                               </div>
-                            </div>
-                          )
-                        } else {
-                          const isExpanded = expandedFolders[docType]
-                          return (
-                            <div key={docType} style={{ background: '#f8fafc', borderRadius: '8px', border: '1px solid var(--color-border)', overflow: 'hidden' }}>
-                              <div 
-                                onClick={() => toggleFolder(docType)}
-                                style={{ padding: '0.55rem 0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: isExpanded ? '#f1f5f9' : 'transparent', transition: 'background 0.2s ease' }}
-                              >
-                                <div style={{ fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.45rem', color: '#0f172a' }}>
-                                  <Folder size={15} style={{ color: 'var(--color-primary)' }} />
-                                  <span style={{ textTransform: 'capitalize' }}>{title} ({docs.length})</span>
-                                </div>
-                                {isExpanded ? <ChevronDown size={16} color="var(--color-text-muted)" /> : <ChevronRight size={16} color="var(--color-text-muted)" />}
-                              </div>
-                              {isExpanded && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.5rem 0.75rem', paddingLeft: '1.75rem', borderTop: '1px solid #e2e8f0', background: '#fff' }}>
-                                  {docs.map((doc, idx) => {
-                                    const filename = getOriginalFilename(doc.storage_key, docType, doc.isDefaultKml)
-                                    const isNonPdf = docType === 'SOURCE_KML' || docType === 'KML' || docType === 'SHAPEFILE' || (doc.storage_key && !doc.storage_key.toLowerCase().endsWith('.pdf'))
-                                    return (
-                                      <div key={doc.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.25rem 0' }}>
-                                        <span style={{ fontSize: '0.75rem', color: 'var(--color-text)', display: 'flex', alignItems: 'center', gap: '0.4rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '60%' }} title={filename}>
-                                          <FileText size={13} color="var(--color-text-muted)" style={{ flexShrink: 0 }} />
-                                          {filename}
-                                        </span>
-                                        <div style={{ display: 'flex', gap: '0.25rem', flexShrink: 0 }}>
-                                          {!isNonPdf && (
-                                            <button className="btn btn-outline btn-sm" onClick={() => handlePreviewPdf(doc)} disabled={pdfLoading} title="Preview Document" style={{ padding: '0.15rem 0.35rem', fontSize: '0.7rem', borderRadius: '4px' }}><Eye size={12} /></button>
-                                          )}
-                                          <button className="btn btn-primary btn-sm" onClick={() => handleDownloadPdf(doc)} title="Download Document" style={{ padding: '0.15rem 0.35rem', fontSize: '0.7rem', borderRadius: '4px' }}><Download size={12} /></button>
-                                        </div>
-                                      </div>
-                                    )
-                                  })}
-                                </div>
+                              {isExpanded ? (
+                                <ChevronDown size={15} color="var(--color-text-muted)" />
+                              ) : (
+                                <ChevronRight size={15} color="var(--color-text-muted)" />
                               )}
                             </div>
-                          )
-                        }
+
+                            {isExpanded && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', padding: '0.5rem 0.75rem', background: '#ffffff' }}>
+                                {cat.docs.map(doc => {
+                                  const title = DOC_TITLES[doc.doc_type] || doc.doc_type.replace(/_/g, ' ')
+                                  const filename = getOriginalFilename(doc.storage_key, doc.doc_type, doc.isDefaultKml)
+                                  const isNonPdf = doc.doc_type === 'SOURCE_KML' || doc.doc_type === 'KML' || doc.doc_type === 'SHAPEFILE' || (doc.storage_key && !doc.storage_key.toLowerCase().endsWith('.pdf'))
+                                  return (
+                                    <div
+                                      key={doc.id}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        padding: '0.35rem 0',
+                                        borderBottom: '1px solid #f8fafc'
+                                      }}
+                                    >
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', minWidth: 0, flex: 1, paddingRight: '0.4rem' }}>
+                                        <FileText size={14} color="#64748b" style={{ flexShrink: 0 }} />
+                                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
+                                          <div style={{ fontSize: '0.82rem', fontWeight: '600', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            {title}
+                                          </div>
+                                          <div style={{ fontSize: '0.7rem', color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={filename}>
+                                            {filename}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div style={{ display: 'flex', gap: '0.3rem', flexShrink: 0 }}>
+                                        {!isNonPdf && (
+                                          <button
+                                            type="button"
+                                            className="btn btn-outline btn-sm"
+                                            onClick={() => handlePreviewPdf(doc)}
+                                            disabled={pdfLoading}
+                                            title={`Preview ${filename}`}
+                                            style={{ padding: '0.2rem 0.45rem', fontSize: '0.72rem', borderRadius: '5px' }}
+                                          >
+                                            <Eye size={12} />
+                                          </button>
+                                        )}
+                                        <button
+                                          type="button"
+                                          className="btn btn-primary btn-sm"
+                                          onClick={() => handleDownloadPdf(doc)}
+                                          title={`Download ${filename}`}
+                                          style={{ padding: '0.2rem 0.45rem', fontSize: '0.72rem', borderRadius: '5px' }}
+                                        >
+                                          <Download size={12} />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )
                       })}
                     </div>
                   )
