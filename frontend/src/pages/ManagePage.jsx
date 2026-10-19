@@ -1107,47 +1107,51 @@ export default function ManagePage() {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.95)',
-                    borderColor: 'rgba(255, 255, 255, 0.8)',
-                    color: '#0f172a',
-                    padding: '0.75rem 1.15rem',
-                    fontSize: '0.9rem',
-                    fontWeight: '600',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.4rem',
-                    borderRadius: '10px',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                  }}
-                  onClick={() => startRename(selectedVillage)}
-                >
-                  <Pencil size={15} /> Edit Village
-                </button>
+                {activeStep !== 11 && segments[0]?.toLowerCase() !== 'overseas' && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.95)',
+                        borderColor: 'rgba(255, 255, 255, 0.8)',
+                        color: '#0f172a',
+                        padding: '0.75rem 1.15rem',
+                        fontSize: '0.9rem',
+                        fontWeight: '600',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        borderRadius: '10px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                      }}
+                      onClick={() => startRename(selectedVillage)}
+                    >
+                      <Pencil size={15} /> Edit Village
+                    </button>
 
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  style={{
-                    background: 'rgba(254, 242, 242, 0.95)',
-                    borderColor: '#fca5a5',
-                    color: '#dc2626',
-                    padding: '0.75rem 1.15rem',
-                    fontSize: '0.9rem',
-                    fontWeight: '600',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.4rem',
-                    borderRadius: '10px',
-                    boxShadow: '0 2px 8px rgba(220, 38, 38, 0.1)'
-                  }}
-                  onClick={() => setDeleteVillageConfirm(selectedVillage)}
-                >
-                  <Trash2 size={15} /> Delete Village
-                </button>
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      style={{
+                        background: 'rgba(254, 242, 242, 0.95)',
+                        borderColor: '#fca5a5',
+                        color: '#dc2626',
+                        padding: '0.75rem 1.15rem',
+                        fontSize: '0.9rem',
+                        fontWeight: '600',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        borderRadius: '10px',
+                        boxShadow: '0 2px 8px rgba(220, 38, 38, 0.1)'
+                      }}
+                      onClick={() => setDeleteVillageConfirm(selectedVillage)}
+                    >
+                      <Trash2 size={15} /> Delete Village
+                    </button>
+                  </>
+                )}
 
                 <button
                   id="btn-add-parcel"
