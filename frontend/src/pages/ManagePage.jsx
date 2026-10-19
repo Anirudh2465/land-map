@@ -590,8 +590,15 @@ export default function ManagePage() {
   // ── Village CRUD handlers ──────────────────────────────────────────────
 
   async function handleAddVillage() {
-    const parentTalukId = talukNode?.id || (villages[0]?.parent_id)
-    if (!newVillageName.trim() || !parentTalukId) return
+    const parentTalukId = talukNode?.id || selectedTalukId || (villages[0]?.parent_id)
+    if (!newVillageName.trim()) {
+      setAddVillageError('Please enter a village name.')
+      return
+    }
+    if (!parentTalukId) {
+      setAddVillageError('Parent taluk not identified. Please try selecting the taluk again.')
+      return
+    }
     setAddVillageLoading(true)
     setAddVillageError('')
     try {
@@ -769,16 +776,30 @@ export default function ManagePage() {
         style={{
           position: 'relative',
           zIndex: 1,
-          maxWidth: '1100px',
+          maxWidth: (activeStep === 5 || activeStep === 11) ? '1100px' : '100%',
           margin: '0 auto',
-          padding: '2rem 1.5rem',
+          padding: (activeStep === 5 || activeStep === 11) ? '2rem 1.5rem' : '1.25rem 1.5rem',
           width: '100%',
           flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
         {/* Breadcrumb (visible on all steps > 0) */}
         {activeStep > 0 && (
-          <nav className="breadcrumb" style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <nav
+            className="breadcrumb"
+            style={{
+              marginBottom: (activeStep === 5 || activeStep === 11) ? '1.25rem' : '0.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              flexWrap: 'wrap',
+              width: '100%',
+              maxWidth: '1100px',
+              margin: (activeStep === 5 || activeStep === 11) ? undefined : '0 auto',
+            }}
+          >
             <a href="/" style={{ color: 'rgba(255, 255, 255, 0.8)', textDecoration: 'none', fontWeight: '500' }}>Home</a>
             <span className="breadcrumb-sep" style={{ color: 'rgba(255, 255, 255, 0.4)' }}>›</span>
             <button
@@ -870,7 +891,7 @@ export default function ManagePage() {
 
         {/* ── Step 0: Select Region ───────────────────────────────────── */}
         {activeStep === 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', minHeight: 'calc(100vh - 140px)' }}>
             <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
               <img src="/logo.png" alt="LMS Logo" style={{ height: '84px', width: 'auto', marginBottom: '0.85rem', filter: 'brightness(0) invert(1) drop-shadow(0 2px 10px rgba(0, 0, 0, 0.5))' }} />
               <h1 className="home-hero-title">Update Records</h1>
@@ -904,7 +925,7 @@ export default function ManagePage() {
 
         {/* ── Step 1: Select State ────────────────────────────────────── */}
         {activeStep === 1 && (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', minHeight: 'calc(100vh - 160px)' }}>
             <div className="map-selection-card" style={{ width: '100%', maxWidth: '440px', margin: '0 auto' }}>
               <div className="map-selection-header">
                 <div className="map-selection-icon"><img src="/india.png" alt="India" /></div>
@@ -932,7 +953,7 @@ export default function ManagePage() {
 
         {/* ── Step 2: Select District ─────────────────────────────────── */}
         {activeStep === 2 && (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', minHeight: 'calc(100vh - 160px)' }}>
             <div className="map-selection-card" style={{ width: '100%', maxWidth: '440px', margin: '0 auto' }}>
               <div className="map-selection-header">
                 <div className="map-selection-icon"><img src="/tamil-nadu.png" alt="District" /></div>
@@ -960,7 +981,7 @@ export default function ManagePage() {
 
         {/* ── Step 3: Select Taluk ────────────────────────────────────── */}
         {activeStep === 3 && (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', minHeight: 'calc(100vh - 160px)' }}>
             <div className="map-selection-card" style={{ width: '100%', maxWidth: '440px', margin: '0 auto' }}>
               <div className="map-selection-header">
                 <div className="map-selection-icon"><img src="/tamil-nadu.png" alt="Taluk" /></div>
@@ -988,7 +1009,7 @@ export default function ManagePage() {
 
         {/* ── Step 4: Select Village Card ─────────────────────────────── */}
         {activeStep === 4 && (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', minHeight: 'calc(100vh - 160px)' }}>
             <div className="map-selection-card" style={{ width: '100%', maxWidth: '440px', margin: '0 auto' }}>
               <div className="map-selection-header">
                 <div className="map-selection-icon"><img src="/tamil-nadu.png" alt="Village" /></div>
@@ -1031,7 +1052,7 @@ export default function ManagePage() {
 
         {/* ── Step 10: Select Overseas Country ────────────────────────── */}
         {activeStep === 10 && (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', minHeight: 'calc(100vh - 160px)' }}>
             <div className="map-selection-card" style={{ width: '100%', maxWidth: '440px', margin: '0 auto' }}>
               <div className="map-selection-header">
                 <div className="map-selection-icon"><img src="/world.png" alt="Overseas" /></div>
@@ -1235,6 +1256,8 @@ export default function ManagePage() {
               </tbody>
             </table>
           </div>
+        )}
+          </>
         )}
 
         {/* Add Parcel Modal */}
@@ -1652,8 +1675,6 @@ export default function ManagePage() {
               </div>
             </div>
           </div>
-        )}
-          </>
         )}
       </div>
     </div>

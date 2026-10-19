@@ -856,6 +856,8 @@ export default function MapPage() {
   // ── Load Plots ───────────────────────────────────────────────────────
   useEffect(() => {
     if (!activeDistrictId) return
+    // If the map is currently animating (panning/zooming), don't interrupt it
+    if (typeof currentStep === 'string' && currentStep.startsWith('PANNING_')) return
     setLoading(true)
     
     // Fetch region details
@@ -1091,15 +1093,25 @@ export default function MapPage() {
     const map = mapInstanceRef.current
     if (map) {
       map.flyTo(INDIA_VIEW.center, INDIA_VIEW.zoom, { duration: 1.0, easeLinearity: 0.25 })
-      const timer = setTimeout(() => {
-        setCurrentStep('STATE')
-        setIsBlurOverlayVisible(true)
-      }, 1050)
-      map.once('moveend', () => {
+      const startTime = Date.now()
+      let finished = false
+      const finish = () => {
+        if (finished) return
+        finished = true
         clearTimeout(timer)
         setCurrentStep('STATE')
         setIsBlurOverlayVisible(true)
-      })
+        if (map) map.invalidateSize()
+      }
+      const timer = setTimeout(finish, 1100)
+      const onMoveEnd = () => {
+        if (Date.now() - startTime < 800) {
+          map.once('moveend', onMoveEnd)
+          return
+        }
+        finish()
+      }
+      map.once('moveend', onMoveEnd)
     }
   }
 
@@ -1111,15 +1123,25 @@ export default function MapPage() {
     const map = mapInstanceRef.current
     if (map) {
       map.flyTo(TN_VIEW.center, TN_VIEW.zoom, { duration: 1.0, easeLinearity: 0.25 })
-      const timer = setTimeout(() => {
-        setCurrentStep('DISTRICT')
-        setIsBlurOverlayVisible(true)
-      }, 1050)
-      map.once('moveend', () => {
+      const startTime = Date.now()
+      let finished = false
+      const finish = () => {
+        if (finished) return
+        finished = true
         clearTimeout(timer)
         setCurrentStep('DISTRICT')
         setIsBlurOverlayVisible(true)
-      })
+        if (map) map.invalidateSize()
+      }
+      const timer = setTimeout(finish, 1100)
+      const onMoveEnd = () => {
+        if (Date.now() - startTime < 800) {
+          map.once('moveend', onMoveEnd)
+          return
+        }
+        finish()
+      }
+      map.once('moveend', onMoveEnd)
     }
   }
 
@@ -1131,15 +1153,11 @@ export default function MapPage() {
       map.flyTo(CBE_BOUNDS.getCenter(), 11, { duration: 1.0, easeLinearity: 0.25 })
     }
 
+    let node = null
     try {
       let targetId = activeDistrictId
-      let node = null
       if (!targetId) {
         node = await getNodeByName('DISTRICT', selectedDistrict || 'Coimbatore')
-        if (node) {
-          targetId = node.id
-          setActiveDistrictId(node.id)
-        }
       } else {
         node = await getNode(targetId).catch(() => null)
       }
@@ -1168,18 +1186,32 @@ export default function MapPage() {
       setSelectedTalukNode(fallbackTaluks[0])
     }
 
-    const timer = setTimeout(() => {
+    const startTime = Date.now()
+    let finished = false
+    const finish = () => {
+      if (finished) return
+      finished = true
+      clearTimeout(timer)
+      if (node?.id) {
+        setActiveDistrictId(node.id)
+      }
       setCurrentStep('TALUK')
       setIsBlurOverlayVisible(true)
       if (map) map.invalidateSize()
-    }, 1050)
+    }
+
+    const timer = setTimeout(finish, 1100)
+
     if (map) {
-      map.once('moveend', () => {
-        clearTimeout(timer)
-        setCurrentStep('TALUK')
-        setIsBlurOverlayVisible(true)
-        map.invalidateSize()
-      })
+      const onMoveEnd = () => {
+        const elapsed = Date.now() - startTime
+        if (elapsed < 800) {
+          map.once('moveend', onMoveEnd)
+          return
+        }
+        finish()
+      }
+      map.once('moveend', onMoveEnd)
     }
   }
 
@@ -1225,18 +1257,29 @@ export default function MapPage() {
       setSelectedVillageNode(null)
     }
 
-    const timer = setTimeout(() => {
+    const startTime = Date.now()
+    let finished = false
+    const finish = () => {
+      if (finished) return
+      finished = true
+      clearTimeout(timer)
       setCurrentStep('VILLAGE')
       setIsBlurOverlayVisible(true)
       if (map) map.invalidateSize()
-    }, 1050)
+    }
+
+    const timer = setTimeout(finish, 1100)
+
     if (map) {
-      map.once('moveend', () => {
-        clearTimeout(timer)
-        setCurrentStep('VILLAGE')
-        setIsBlurOverlayVisible(true)
-        map.invalidateSize()
-      })
+      const onMoveEnd = () => {
+        const elapsed = Date.now() - startTime
+        if (elapsed < 800) {
+          map.once('moveend', onMoveEnd)
+          return
+        }
+        finish()
+      }
+      map.once('moveend', onMoveEnd)
     }
   }
 
