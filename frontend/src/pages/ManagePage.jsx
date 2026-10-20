@@ -1461,7 +1461,7 @@ export default function ManagePage() {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                               <FileField label="Deed Document" accept=".pdf" onChange={setDeedFile} files={deedFile} />
                               <FileField label="Parent Document" accept=".pdf" onChange={setParentDocumentFile} files={parentDocumentFile} />
-                              <FileField label="TSLR Sketch" accept=".pdf" onChange={setFmbFile} files={fmbFile} />
+                              <FileField label="FMB / TSLR Sketch" accept=".pdf" onChange={setFmbFile} files={fmbFile} />
                               <FileField label="Patta / Chitta Details" accept=".pdf" onChange={setPattaFile} files={pattaFile} />
                               <FileField label="EC Details" accept=".pdf" onChange={setEcDetailsFile} files={ecDetailsFile} />
                               <FileField label="Adangal" accept=".pdf" onChange={setAdangalFile} files={adangalFile} />

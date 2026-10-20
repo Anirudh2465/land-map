@@ -78,9 +78,9 @@ const DOC_CATEGORY_CONFIG = [
 const DOC_TITLES = {
   DEED: 'Deed Document',
   PARENT_DOCUMENT: 'Parent Document',
-  FMB: 'TSLR Sketch',
-  FMB_SKETCH: 'TSLR Sketch',
-  TSLR_SKETCH: 'TSLR Sketch',
+  FMB: 'FMB / TSLR Sketch',
+  FMB_SKETCH: 'FMB / TSLR Sketch',
+  TSLR_SKETCH: 'FMB / TSLR Sketch',
   PATTA: 'Patta / Chitta Details',
   EC_DETAILS: 'EC Details',
   BUILDING_PLAN: 'Building Plan',
