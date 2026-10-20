@@ -592,7 +592,7 @@ export default function ManagePage() {
   async function handleAddVillage() {
     const parentTalukId = talukNode?.id || selectedTalukId || (villages[0]?.parent_id)
     if (!newVillageName.trim()) {
-      setAddVillageError('Please enter a village name.')
+      setAddVillageError('Please enter a town / village name.')
       return
     }
     if (!parentTalukId) {
@@ -608,7 +608,7 @@ export default function ManagePage() {
       setNewVillageName('')
       setShowAddVillage(false)
     } catch (err) {
-      setAddVillageError(err.response?.data?.detail || 'Failed to create village.')
+      setAddVillageError(err.response?.data?.detail || 'Failed to create town / village.')
     } finally {
       setAddVillageLoading(false)
     }
@@ -631,7 +631,7 @@ export default function ManagePage() {
       const newSlug = toSlug(updated.name)
       navigate('/manage/India/' + segments[1] + '/' + segments[2] + '/' + segments[3] + '/' + newSlug, { replace: true })
     } catch (err) {
-      setRenameError(err.response?.data?.detail || 'Failed to rename village.')
+      setRenameError(err.response?.data?.detail || 'Failed to rename town / village.')
     } finally {
       setRenameLoading(false)
     }
@@ -645,7 +645,7 @@ export default function ManagePage() {
       setDeleteVillageConfirm(null)
       navigate('/manage/India/' + segments[1] + '/' + segments[2] + '/' + segments[3])
     } catch (err) {
-      alert(err.response?.data?.detail || 'Failed to delete village.')
+      alert(err.response?.data?.detail || 'Failed to delete town / village.')
     } finally {
       setDeletingVillage(false)
     }
@@ -740,7 +740,7 @@ export default function ManagePage() {
       return <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>{stateNode?.name || fromSlug(segments[1])} › {districtNode?.name || fromSlug(segments[2])} › Select Taluk</span>
     }
     if (activeStep === 4) {
-      return <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>{districtNode?.name || fromSlug(segments[2])} › {talukNode?.name || fromSlug(segments[3])} › Select Village</span>
+      return <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>{districtNode?.name || fromSlug(segments[2])} › {talukNode?.name || fromSlug(segments[3])} › Select Town / Village</span>
     }
     if (activeStep === 5) {
       const vName = villageNode?.name || fromSlug(segments[4])
@@ -1001,7 +1001,7 @@ export default function ManagePage() {
                 )}
               </div>
               <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '0.85rem', fontWeight: '600' }} onClick={handleTalukContinue} disabled={!selectedTalukId || taluks.length === 0 || loadingStep}>
-                {loadingStep ? 'Loading...' : 'Continue to Village →'}
+                {loadingStep ? 'Loading...' : 'Continue to Town / Village →'}
               </button>
             </div>
           </div>
@@ -1012,24 +1012,24 @@ export default function ManagePage() {
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', minHeight: 'calc(100vh - 160px)' }}>
             <div className="map-selection-card" style={{ width: '100%', maxWidth: '440px', margin: '0 auto' }}>
               <div className="map-selection-header">
-                <div className="map-selection-icon"><img src="/tamil-nadu.png" alt="Village" /></div>
-                <h2 className="map-selection-title">Select Village</h2>
-                <p className="map-selection-subtitle">{talukNode?.name || fromSlug(segments[3])} • Choose village to manage records</p>
+                <div className="map-selection-icon"><img src="/tamil-nadu.png" alt="Town / Village" /></div>
+                <h2 className="map-selection-title">Select Town / Village</h2>
+                <p className="map-selection-subtitle">{talukNode?.name || fromSlug(segments[3])} • Choose town / village to manage records</p>
               </div>
               <div className="selection-dropdown-wrapper">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                  <label className="form-label" style={{ margin: 0, fontWeight: '600' }}>Village</label>
+                  <label className="form-label" style={{ margin: 0, fontWeight: '600' }}>Town / Village</label>
                   <button
                     type="button"
                     className="btn btn-primary btn-sm"
                     style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', borderRadius: '6px' }}
                     onClick={() => { setShowAddVillage(true); setAddVillageError(''); setNewVillageName('') }}
                   >
-                    <Plus size={13} /> Add Village
+                    <Plus size={13} /> Add Town / Village
                   </button>
                 </div>
                 {villages.length === 0 ? (
-                  <p style={{ color: 'var(--color-text-muted)' }}>No villages available in this taluk.</p>
+                  <p style={{ color: 'var(--color-text-muted)' }}>No towns / villages available in this taluk.</p>
                 ) : (
                   <select className="selection-select" value={selectedVillageChoiceId} onChange={e => setSelectedVillageChoiceId(e.target.value)}>
                     {villages.map(v => (
@@ -1044,7 +1044,7 @@ export default function ManagePage() {
                 onClick={handleVillageContinue}
                 disabled={villages.length === 0 || !selectedVillageChoiceId || loadingStep}
               >
-                {loadingStep ? 'Loading...' : 'Continue to Village Parcels →'}
+                {loadingStep ? 'Loading...' : 'Continue to Town / Village Parcels →'}
               </button>
             </div>
           </div>
@@ -1127,7 +1127,7 @@ export default function ManagePage() {
                       }}
                       onClick={() => startRename(selectedVillage)}
                     >
-                      <Pencil size={15} /> Edit Village
+                      <Pencil size={15} /> Edit Town / Village
                     </button>
 
                     <button
@@ -1148,7 +1148,7 @@ export default function ManagePage() {
                       }}
                       onClick={() => setDeleteVillageConfirm(selectedVillage)}
                     >
-                      <Trash2 size={15} /> Delete Village
+                      <Trash2 size={15} /> Delete Town / Village
                     </button>
                   </>
                 )}
@@ -1604,13 +1604,13 @@ export default function ManagePage() {
           <div className="modal-overlay" onClick={() => setShowAddVillage(false)}>
             <div className="modal" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
               <div className="modal-header">
-                <span className="modal-title">Add Village</span>
+                <span className="modal-title">Add Town / Village</span>
                 <button className="btn-outline" style={{ border: 'none', padding: '0.2rem 0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setShowAddVillage(false)}><X size={20} /></button>
               </div>
               <div className="modal-body">
                 {addVillageError && <div className="alert alert-error" style={{ marginBottom: '1rem' }}>{addVillageError}</div>}
                 <div className="form-group">
-                  <label className="form-label">Village Name *</label>
+                  <label className="form-label">Town / Village Name *</label>
                   <input
                     className="form-input"
                     placeholder="e.g. Bogampatti"
@@ -1624,7 +1624,7 @@ export default function ManagePage() {
               <div className="modal-footer">
                 <button className="btn btn-outline" onClick={() => setShowAddVillage(false)} disabled={addVillageLoading}>Cancel</button>
                 <button className="btn btn-primary" onClick={handleAddVillage} disabled={!newVillageName.trim() || addVillageLoading}>
-                  {addVillageLoading ? 'Creating...' : 'Create Village'}
+                  {addVillageLoading ? 'Creating...' : 'Create Town / Village'}
                 </button>
               </div>
             </div>
@@ -1636,13 +1636,13 @@ export default function ManagePage() {
           <div className="modal-overlay" onClick={() => setRenameVillageId(null)}>
             <div className="modal" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
               <div className="modal-header">
-                <span className="modal-title">Edit Village Name</span>
+                <span className="modal-title">Edit Town / Village Name</span>
                 <button className="btn-outline" style={{ border: 'none', padding: '0.2rem 0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setRenameVillageId(null)}><X size={20} /></button>
               </div>
               <div className="modal-body">
                 {renameError && <div className="alert alert-error" style={{ marginBottom: '1rem' }}>{renameError}</div>}
                 <div className="form-group">
-                  <label className="form-label">Village Name *</label>
+                  <label className="form-label">Town / Village Name *</label>
                   <input
                     className="form-input"
                     value={renameValue}
@@ -1666,15 +1666,15 @@ export default function ManagePage() {
         {deleteVillageConfirm && (
           <div className="modal-overlay" onClick={() => setDeleteVillageConfirm(null)}>
             <div className="modal" style={{ maxWidth: '420px' }} onClick={e => e.stopPropagation()}>
-              <div className="modal-header"><span className="modal-title">Delete Village</span></div>
+              <div className="modal-header"><span className="modal-title">Delete Town / Village</span></div>
               <div className="modal-body">
-                <p>Delete <strong>{deleteVillageConfirm.name}</strong>? This will permanently delete all parcels and their documents in this village.</p>
+                <p>Delete <strong>{deleteVillageConfirm.name}</strong>? This will permanently delete all parcels and their documents in this town / village.</p>
                 <p style={{ color: '#dc2626', fontWeight: '600', marginTop: '0.5rem', fontSize: '0.875rem' }}>This action cannot be undone.</p>
               </div>
               <div className="modal-footer">
                 <button className="btn btn-outline" onClick={() => setDeleteVillageConfirm(null)} disabled={deletingVillage}>Cancel</button>
                 <button className="btn btn-danger" onClick={() => handleDeleteVillage(deleteVillageConfirm)} disabled={deletingVillage}>
-                  {deletingVillage ? 'Deleting...' : 'Delete Village'}
+                  {deletingVillage ? 'Deleting...' : 'Delete Town / Village'}
                 </button>
               </div>
             </div>

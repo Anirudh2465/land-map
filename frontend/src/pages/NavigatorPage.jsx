@@ -150,7 +150,7 @@ export default function NavigatorPage() {
       setNewVillageName('')
       setShowAddVillage(false)
     } catch (err) {
-      setAddVillageError(err.response?.data?.detail || 'Failed to create village.')
+      setAddVillageError(err.response?.data?.detail || 'Failed to create town / village.')
     } finally {
       setAddVillageLoading(false)
     }
@@ -195,7 +195,7 @@ export default function NavigatorPage() {
     if (step === 4) {
       const distName = districts.find(d => d.id === selectedDistrictId)?.name || 'District'
       const talukName = taluks.find(t => t.id === selectedTalukId)?.name || 'Taluk'
-      text = `${distName} › ${talukName} › Select Village`
+      text = `${distName} › ${talukName} › Select Town / Village`
     }
     if (step === 10) text = 'Overseas › Select Country'
     return <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>{text}</span>
@@ -298,7 +298,7 @@ export default function NavigatorPage() {
               <div className="map-selection-icon"><img src="/tamil-nadu.png" alt="Taluk" /></div>
               <h2 className="map-selection-title">Select Taluk</h2>
               <p className="map-selection-subtitle">
-                {districts.find(d => d.id === selectedDistrictId)?.name || 'District'} • Choose taluk to {isView ? 'view villages' : 'manage records'}
+                {districts.find(d => d.id === selectedDistrictId)?.name || 'District'} • Choose taluk to {isView ? 'view towns / villages' : 'manage records'}
               </p>
             </div>
             <div className="selection-dropdown-wrapper">
@@ -314,7 +314,7 @@ export default function NavigatorPage() {
               )}
             </div>
             <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '0.85rem', fontWeight: '600' }} onClick={handleTalukContinue} disabled={!selectedTalukId || displayTaluks.length === 0 || loadingRegions}>
-              {loadingRegions ? 'Loading...' : 'Continue to Village →'}
+              {loadingRegions ? 'Loading...' : 'Continue to Town / Village →'}
             </button>
           </div>
         )}
@@ -322,26 +322,26 @@ export default function NavigatorPage() {
         {step === 4 && (
           <div className="map-selection-card">
             <div className="map-selection-header">
-              <div className="map-selection-icon"><img src="/tamil-nadu.png" alt="Village" /></div>
-              <h2 className="map-selection-title">Select Village</h2>
+              <div className="map-selection-icon"><img src="/tamil-nadu.png" alt="Town / Village" /></div>
+              <h2 className="map-selection-title">Select Town / Village</h2>
               <p className="map-selection-subtitle">
-                {taluks.find(t => t.id === selectedTalukId)?.name || 'Taluk'} • Choose village to {isView ? 'explore parcel registry' : 'manage records'}
+                {taluks.find(t => t.id === selectedTalukId)?.name || 'Taluk'} • Choose town / village to {isView ? 'explore parcel registry' : 'manage records'}
               </p>
             </div>
             <div className="selection-dropdown-wrapper">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <label className="form-label" style={{ margin: 0, fontWeight: '600' }}>Village</label>
+                <label className="form-label" style={{ margin: 0, fontWeight: '600' }}>Town / Village</label>
                 <button
                   type="button"
                   className="btn btn-primary btn-sm"
                   style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', borderRadius: '6px' }}
                   onClick={() => { setShowAddVillage(true); setAddVillageError(''); setNewVillageName('') }}
                 >
-                  <Plus size={13} /> Add Village
+                  <Plus size={13} /> Add Town / Village
                 </button>
               </div>
               {villages.length === 0 ? (
-                 <p style={{ color: 'var(--color-text-muted)' }}>No villages available in this taluk.</p>
+                 <p style={{ color: 'var(--color-text-muted)' }}>No towns / villages available in this taluk.</p>
               ) : (
                 <select className="selection-select" value={selectedVillageId} onChange={e => setSelectedVillageId(e.target.value)}>
                   {villages.map(v => (
@@ -351,7 +351,7 @@ export default function NavigatorPage() {
               )}
             </div>
             <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '0.85rem', fontWeight: '600' }} onClick={() => handleNavigate(selectedVillageId)} disabled={!selectedVillageId || villages.length === 0}>
-              {isView ? 'Explore Village Parcels →' : 'Manage Village Records →'}
+              {isView ? 'Explore Town / Village Parcels →' : 'Manage Town / Village Records →'}
             </button>
           </div>
         )}
@@ -387,13 +387,13 @@ export default function NavigatorPage() {
         <div className="modal-overlay" onClick={() => setShowAddVillage(false)}>
           <div className="modal" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <span className="modal-title">Add Village</span>
+              <span className="modal-title">Add Town / Village</span>
               <button className="btn-outline" style={{ border: 'none', padding: '0.2rem 0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={() => setShowAddVillage(false)}><X size={20} /></button>
             </div>
             <div className="modal-body">
               {addVillageError && <div className="alert alert-error" style={{ marginBottom: '1rem' }}>{addVillageError}</div>}
               <div className="form-group">
-                <label className="form-label">Village Name *</label>
+                <label className="form-label">Town / Village Name *</label>
                 <input
                   className="form-input"
                   placeholder="e.g. Bogampatti"
@@ -407,7 +407,7 @@ export default function NavigatorPage() {
             <div className="modal-footer">
               <button className="btn btn-outline" onClick={() => setShowAddVillage(false)} disabled={addVillageLoading}>Cancel</button>
               <button className="btn btn-primary" onClick={handleAddVillage} disabled={!newVillageName.trim() || addVillageLoading}>
-                {addVillageLoading ? 'Creating...' : 'Create Village'}
+                {addVillageLoading ? 'Creating...' : 'Create Town / Village'}
               </button>
             </div>
           </div>

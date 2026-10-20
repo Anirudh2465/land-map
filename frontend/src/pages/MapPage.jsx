@@ -1410,7 +1410,7 @@ export default function MapPage() {
     if (currentStep === 'VILLAGE' || currentStep === 'PANNING_VILLAGE') {
       return (
         <span className="header-center-title" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
-          {selectedDistrict} › {selectedTaluk || 'Taluk'} › Select Village
+          {selectedDistrict} › {selectedTaluk || 'Taluk'} › Select Town / Village
         </span>
       )
     }
@@ -2861,7 +2861,7 @@ export default function MapPage() {
                     <img src="/tamil-nadu.png" alt="Taluk" />
                   </div>
                   <h2 className="map-selection-title">Select Taluk</h2>
-                  <p className="map-selection-subtitle">{selectedDistrict} • Choose taluk to view villages</p>
+                  <p className="map-selection-subtitle">{selectedDistrict} • Choose taluk to view towns / villages</p>
                 </div>
                 <div className="selection-dropdown-wrapper">
                   <label className="form-label" style={{ marginBottom: '0.5rem', fontWeight: '600' }}>Taluk</label>
@@ -2881,7 +2881,7 @@ export default function MapPage() {
                   onClick={() => handleSelectTaluk(selectedTaluk)}
                   disabled={!selectedTaluk}
                 >
-                  Continue to Village →
+                  Continue to Town / Village →
                 </button>
               </div>
             )}
@@ -2890,15 +2890,15 @@ export default function MapPage() {
               <div className="map-selection-card">
                 <div className="map-selection-header">
                   <div className="map-selection-icon">
-                    <img src="/CoimbatoreMap.png" alt="Village" />
+                    <img src="/CoimbatoreMap.png" alt="Town / Village" />
                   </div>
-                  <h2 className="map-selection-title">Select Village</h2>
-                  <p className="map-selection-subtitle">{selectedTaluk || 'Taluk'} • Choose village to view land parcels</p>
+                  <h2 className="map-selection-title">Select Town / Village</h2>
+                  <p className="map-selection-subtitle">{selectedTaluk || 'Taluk'} • Choose town / village to view land parcels</p>
                 </div>
                 <div className="selection-dropdown-wrapper">
-                  <label className="form-label" style={{ marginBottom: '0.5rem', fontWeight: '600' }}>Village</label>
+                  <label className="form-label" style={{ marginBottom: '0.5rem', fontWeight: '600' }}>Town / Village</label>
                   {villagesList.length === 0 ? (
-                    <p style={{ color: 'var(--color-text-muted)', margin: '0.5rem 0' }}>No villages registered in this taluk.</p>
+                    <p style={{ color: 'var(--color-text-muted)', margin: '0.5rem 0' }}>No towns / villages registered in this taluk.</p>
                   ) : (
                     <select
                       className="selection-select"
@@ -2918,7 +2918,7 @@ export default function MapPage() {
                     onClick={() => handleSelectVillage()}
                     disabled={villagesList.length === 0 && !selectedVillage}
                   >
-                    Explore Village Parcels →
+                    Explore Town / Village Parcels →
                   </button>
                 </div>
               </div>
