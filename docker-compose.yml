@@ -100,3 +100,10 @@ services:
 volumes:
   db_data:
   minio_data:
+
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${DOCKER_SUBNET:-192.168.200.0/24}
