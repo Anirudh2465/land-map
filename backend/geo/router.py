@@ -284,12 +284,8 @@ def resolve_geo_path(path: str, db: Session = Depends(get_db)):
                 matched = c
                 break
 
-        if not matched:
-            for c in candidates:
-                c_norm = normalize_name(c.name)
-                if norm in c_norm or c_norm in norm:
-                    matched = c
-                    break
+        # Partial/fuzzy match removed: it caused 'coimbatore central zone' to match
+        # 'coimbatore central zone 2' due to substring overlap. Exact match only.
 
         if matched:
             matched.plot_count = get_plot_count(db, matched)
