@@ -1,11 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from database import get_db
 from models import GeoNode, Plot, Document, DocumentExtract, AISummary, Owner, Transaction, TaxRecord
 from typing import List, Optional
 from pydantic import BaseModel
 from uuid import UUID
 import uuid
+import re
+import urllib.parse
 from auth.dependencies import require_admin
 from minio_client import delete_plot_storage
 
@@ -216,7 +219,11 @@ def delete_village(
 
 
 def normalize_name(s: str) -> str:
-    return s.strip().lower().replace("-", " ").replace("_", " ")
+    s = urllib.parse.unquote(s)            # decode any %xx encoding
+    s = s.strip().lower()
+    s = s.replace("-", " ").replace("_", " ")
+    s = re.sub(r"\s+", " ", s)           # collapse multiple whitespace
+    return s
 
 
 @router.get("/resolve-path", response_model=ResolvePathResponse)
@@ -277,15 +284,13 @@ def resolve_geo_path(path: str, db: Session = Depends(get_db)):
         else:
             query = query.filter(GeoNode.parent_id == parent_id)
 
-        candidates = query.all()
-        matched = None
-        for c in candidates:
-            if normalize_name(c.name) == norm:
-                matched = c
-                break
-
-        # Partial/fuzzy match removed: it caused 'coimbatore central zone' to match
-        # 'coimbatore central zone 2' due to substring overlap. Exact match only.
+        # SQL-level normalized match: trim + lowercase + replace separators
+        # This is more reliable than Python-level iteration (avoids encoding edge cases)
+        matched = query.filter(
+            func.lower(func.trim(
+                func.replace(func.replace(GeoNode.name, '-', ' '), '_', ' ')
+            )) == norm
+        ).first()
 
         if matched:
             matched.plot_count = get_plot_count(db, matched)
