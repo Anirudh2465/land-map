@@ -106,4 +106,4 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: ${DOCKER_SUBNET:-192.168.200.0/24}
+        - subnet: ${DOCKER_SUBNET:-192.168.210.0/24}
