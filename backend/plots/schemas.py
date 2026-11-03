@@ -30,6 +30,7 @@ class PlotListItem(BaseModel):
     # GeoJSON geometry for map rendering
     boundary_geojson: Optional[dict] = None
     source_file_key: Optional[str] = None
+    geo_node_id: Optional[UUID] = None
     # Include docs for manage page count badge
     documents: List[DocumentOut] = []
 

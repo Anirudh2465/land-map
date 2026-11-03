@@ -51,6 +51,7 @@ def _plot_to_list_item(plot: Plot) -> PlotListItem:
         owner_name=plot.owner_name,
         boundary_geojson=_geometry_to_geojson(plot.boundary),
         source_file_key=plot.source_file_key,
+        geo_node_id=plot.geo_node_id,
         documents=docs,
     )
 
@@ -73,6 +74,7 @@ def _plot_to_detail(plot: Plot) -> PlotDetail:
         owner_name=plot.owner_name,
         boundary_geojson=_geometry_to_geojson(plot.boundary),
         source_file_key=plot.source_file_key,
+        geo_node_id=plot.geo_node_id,
         survey_number=plot.survey_number,
         classification=plot.classification,
         status=plot.status,

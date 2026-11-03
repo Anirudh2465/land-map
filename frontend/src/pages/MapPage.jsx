@@ -230,7 +230,8 @@ const PARCEL_SELECTED_STYLE = {
 }
 
 export default function MapPage() {
-  const { districtId } = useParams()
+  const params = useParams()
+  const districtId = params.districtId || params['*'] || null
   const navigate = useNavigate()
 
   const mapRef = useRef(null)
@@ -1285,7 +1286,7 @@ export default function MapPage() {
 
   async function handleSelectVillage(villageName) {
     const targetName = villageName || selectedVillage
-    const vObj = villagesList.find(v => v.name === targetName) || selectedVillageNode
+    const vObj = villagesList.find(v => v.name === targetName || v.id === targetName) || selectedVillageNode
     setSelectedVillage(targetName)
     setSelectedVillageNode(vObj)
 
@@ -1297,11 +1298,14 @@ export default function MapPage() {
       const targetId = vObj?.id || selectedTalukNode?.id || activeDistrictId
       if (targetId) {
         const pList = await getPlots(targetId)
-        setPlots(pList)
+        const villagePlots = (vObj?.id && vObj?.level === 'VILLAGE')
+          ? pList.filter(p => !p.geo_node_id || p.geo_node_id === vObj.id)
+          : pList
+        setPlots(villagePlots)
 
         const map = mapInstanceRef.current
-        if (map && pList.length > 0) {
-          const pts = pList.filter(p => p.lat != null && p.lon != null).map(p => [p.lat, p.lon])
+        if (map && villagePlots.length > 0) {
+          const pts = villagePlots.filter(p => p.lat != null && p.lon != null).map(p => [p.lat, p.lon])
           if (pts.length === 1) {
             map.flyTo(pts[0], 16, { duration: 1.0, easeLinearity: 0.25 })
           } else if (pts.length > 1) {
@@ -1344,6 +1348,7 @@ export default function MapPage() {
       setSelectedPlot(null)
       setCurrentStep('VILLAGE')
       setIsBlurOverlayVisible(true)
+      setPlots([])
       if (map && selectedTaluk && TALUK_COORDS[selectedTaluk]) {
         map.flyTo(TALUK_COORDS[selectedTaluk].center, TALUK_COORDS[selectedTaluk].zoom, { duration: 1.0 })
       }
@@ -1353,6 +1358,7 @@ export default function MapPage() {
     if (currentStep === 'VILLAGE') {
       setCurrentStep('TALUK')
       setIsBlurOverlayVisible(true)
+      setPlots([])
       if (map) {
         map.flyTo(CBE_BOUNDS.getCenter(), 11, { duration: 1.0 })
       }
@@ -1449,16 +1455,26 @@ export default function MapPage() {
   // ── Render Polygons ──────────────────────────────────────────────────
   useEffect(() => {
     const map = mapInstanceRef.current
-    if (!map || plots.length === 0) return
+    if (!map) return
 
-    // Remove old layers
+    // ALWAYS clean up prior layers from map first, even if plots is empty
     layersRef.current.forEach(({ layer, labelMarker }) => {
-      map.removeLayer(layer)
-      if (labelMarker) map.removeLayer(labelMarker)
+      if (map.hasLayer(layer)) map.removeLayer(layer)
+      if (labelMarker && map.hasLayer(labelMarker)) map.removeLayer(labelMarker)
     })
     layersRef.current = []
 
-    plots.forEach(plot => {
+    if (plots.length === 0) return
+
+    // Strictly display only plots of the currently selected town/village
+    const plotsToRender = plots.filter(plot => {
+      if (selectedVillageNode?.id && plot.geo_node_id) {
+        return plot.geo_node_id === selectedVillageNode.id
+      }
+      return true
+    })
+
+    plotsToRender.forEach(plot => {
       if (!plot.boundary_geojson) return
 
       const geoLayer = L.geoJSON(plot.boundary_geojson, {
@@ -1851,22 +1867,17 @@ export default function MapPage() {
   }
 
   const filteredPlots = plots.filter(plot => {
-    if (selectedVillageNode) {
-      if (plot.geo_node_id && plot.geo_node_id === selectedVillageNode.id) return true
-      const loc = ((plot.location_name || '') + ' ' + (plot.address || '') + ' ' + (plot.landmark || '') + ' ' + (plot.property_name || '')).toLowerCase()
-      if (loc.includes(selectedVillageNode.name.toLowerCase())) return true
+    if (selectedVillageNode?.id && plot.geo_node_id && plot.geo_node_id !== selectedVillageNode.id) {
       return false
-    } else if (selectedVillage) {
-      const loc = ((plot.location_name || '') + ' ' + (plot.address || '') + ' ' + (plot.landmark || '') + ' ' + (plot.property_name || '')).toLowerCase()
-      const pNum = (plot.plot_number || '').toLowerCase()
-      if (!loc.includes(selectedVillage.toLowerCase()) && !pNum.includes(selectedVillage.toLowerCase())) return false
     }
-
     if (!searchQuery.trim()) return true
     const q = searchQuery.toLowerCase().trim()
     const pNum = (plot.plot_number || '').toLowerCase()
     const pName = (plot.property_name || '').toLowerCase()
-    return pNum.includes(q) || pName.includes(q)
+    const pLoc = (plot.location_name || '').toLowerCase()
+    const pLandmark = (plot.landmark || '').toLowerCase()
+    const pOwner = (plot.owner_name || '').toLowerCase()
+    return pNum.includes(q) || pName.includes(q) || pLoc.includes(q) || pLandmark.includes(q) || pOwner.includes(q)
   })
 
   // ── Render ────────────────────────────────────────────────────────────
@@ -2903,7 +2914,12 @@ export default function MapPage() {
                     <select
                       className="selection-select"
                       value={selectedVillage}
-                      onChange={e => setSelectedVillage(e.target.value)}
+                      onChange={e => {
+                        const val = e.target.value
+                        setSelectedVillage(val)
+                        const found = villagesList.find(v => v.name === val || v.id === val)
+                        if (found) setSelectedVillageNode(found)
+                      }}
                     >
                       {villagesList.map(v => (
                         <option key={v.id || v.name} value={v.name}>{v.name}</option>
