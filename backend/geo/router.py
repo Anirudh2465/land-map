@@ -68,20 +68,28 @@ def get_plot_count(db: Session, node: GeoNode) -> int:
         district_ids = db.query(GeoNode.id).filter(GeoNode.parent_id == node.id)
         taluk_ids = db.query(GeoNode.id).filter(GeoNode.parent_id.in_(district_ids))
         village_ids = db.query(GeoNode.id).filter(GeoNode.parent_id.in_(taluk_ids))
-        return db.query(Plot).join(GeoNode, Plot.geo_node_id == GeoNode.id).filter(
-            (GeoNode.parent_id.in_(district_ids)) | (Plot.geo_node_id.in_(village_ids)),
+        return db.query(Plot).filter(
+            (Plot.geo_node_id == node.id) |
+            (Plot.geo_node_id.in_(district_ids)) |
+            (Plot.geo_node_id.in_(taluk_ids)) |
+            (Plot.geo_node_id.in_(village_ids)),
             Plot.status == "ACTIVE"
         ).count()
 
     elif node.level == 'COUNTRY':
-        # Sum plots attached directly to the country (overseas) and all descendants
-        direct_count = db.query(Plot).filter(Plot.geo_node_id == node.id, Plot.status == "ACTIVE").count()
-        child_count = db.query(Plot).join(GeoNode, Plot.geo_node_id == GeoNode.id).filter(
-            ((GeoNode.parent_id == node.id) |
-            (GeoNode.parent_id.in_(db.query(GeoNode.id).filter(GeoNode.parent_id == node.id)))),
+        # Sum plots attached directly to the country (overseas) and all descendants (states -> districts -> taluks -> villages)
+        state_ids = db.query(GeoNode.id).filter(GeoNode.parent_id == node.id)
+        district_ids = db.query(GeoNode.id).filter(GeoNode.parent_id.in_(state_ids))
+        taluk_ids = db.query(GeoNode.id).filter(GeoNode.parent_id.in_(district_ids))
+        village_ids = db.query(GeoNode.id).filter(GeoNode.parent_id.in_(taluk_ids))
+        return db.query(Plot).filter(
+            (Plot.geo_node_id == node.id) |
+            (Plot.geo_node_id.in_(state_ids)) |
+            (Plot.geo_node_id.in_(district_ids)) |
+            (Plot.geo_node_id.in_(taluk_ids)) |
+            (Plot.geo_node_id.in_(village_ids)),
             Plot.status == "ACTIVE"
         ).count()
-        return direct_count + child_count
 
     return 0
 
@@ -319,13 +327,16 @@ def resolve_geo_path(path: str, db: Session = Depends(get_db)):
 
 
 @router.get("/by-name/{level}/{name}", response_model=GeoNodeOut)
-def get_node_by_name(level: str, name: str, db: Session = Depends(get_db)):
+def get_node_by_name(level: str, name: str, parent_id: Optional[UUID] = None, db: Session = Depends(get_db)):
     """Get a GeoNode by its level and name (e.g. DISTRICT/Coimbatore or DISTRICT/Coimbatore-South)."""
     clean_name = name.replace("-", " ")
-    node = db.query(GeoNode).filter(
+    query = db.query(GeoNode).filter(
         GeoNode.level == level.upper(),
         (GeoNode.name.ilike(name)) | (GeoNode.name.ilike(clean_name))
-    ).first()
+    )
+    if parent_id is not None:
+        query = query.filter(GeoNode.parent_id == parent_id)
+    node = query.first()
     if not node:
         raise HTTPException(status_code=404, detail=f"GeoNode {level}/{name} not found")
     node.plot_count = get_plot_count(db, node)
