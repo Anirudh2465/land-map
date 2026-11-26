@@ -200,7 +200,7 @@ export default function MapPage() {
   const [pdfLoading, setPdfLoading] = useState(false)
   const [pinnedPos, setPinnedPos] = useState({ x: 0, y: 0, placement: 'top' })
   const [activeBasemap, setActiveBasemap] = useState('Satellite')
-  const [isPinned, setIsPinned] = useState(true)
+  const [isPinned, setIsPinned] = useState(false)
   const [floatingPos, setFloatingPos] = useState({ x: 80, y: 120 })
   const [isDragging, setIsDragging] = useState(false)
   const dragRef = useRef({ startX: 0, startY: 0, initialLeft: 0, initialTop: 0 })
@@ -796,7 +796,7 @@ export default function MapPage() {
   // ── Plot Selection ─────────────────────────────────────────────────────
   const selectPlot = (plot) => {
     setSelectedPlot(plot)
-    setIsPinned(true)
+    setIsPinned(false)
     setActivePanelTab('details')
     clearRouteAndNearby()
     setAddressViewMode('db')
@@ -1651,7 +1651,11 @@ export default function MapPage() {
     selectedLayerRef.current = { layer: geoLayer }
 
     setSelectedPlot(plot)
-    setIsPinned(true)
+    setIsPinned(false)
+    setFloatingPos(prev => ({
+      x: Math.max(10, Math.min(window.innerWidth - 390, prev.x)),
+      y: Math.max(70, Math.min(window.innerHeight - 100, prev.y))
+    }))
     setAddressViewMode('db')
 
     const map = mapInstanceRef.current
@@ -1731,7 +1735,7 @@ export default function MapPage() {
   function handleClosePanel() {
     selectedPlotRef.current = null
     setSelectedPlot(null)
-    setIsPinned(true)
+    setIsPinned(false)
     setPinnedPos({ x: 0, y: 0, placement: 'top' })
     clearRouteAndNearby()
     if (selectedLayerRef.current) {
@@ -2167,7 +2171,7 @@ export default function MapPage() {
                 <button
                   type="button"
                   onClick={togglePin}
-                  title={isPinned ? "Unpin card to drag freely across screen" : "Pin card back to plot"}
+                  title={isPinned ? "Unpin card to drag freely across screen" : "Pin card to plot"}
                   style={{
                     background: isPinned ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.38)',
                     border: 'none',
