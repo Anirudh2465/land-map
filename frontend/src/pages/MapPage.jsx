@@ -14,6 +14,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { MarkerClusterGroup } from 'leaflet.markercluster'
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
 import markerIcon from 'leaflet/dist/images/marker-icon.png'
 import markerShadow from 'leaflet/dist/images/marker-shadow.png'
@@ -188,6 +190,8 @@ export default function MapPage() {
   const labelsLayerRef = useRef(null)
   const satelliteGroupRef = useRef(null)
   const layersRef = useRef([]) // { layer, plot, labelMarker }
+  const clusterGroupRef = useRef(null)
+  const canvasRendererRef = useRef(null)
   const selectedLayerRef = useRef(null)
   const selectedPlotRef = useRef(null)
 
@@ -736,6 +740,7 @@ export default function MapPage() {
     }
 
     mapInstanceRef.current = map
+    canvasRendererRef.current = L.canvas({ padding: 0.5 })
 
     // Cleanup on unmount
     return () => {
@@ -780,7 +785,10 @@ export default function MapPage() {
       if (labelsLayer && map.hasLayer(labelsLayer)) {
         map.removeLayer(labelsLayer)
       }
-      // Hide parcel GeoJSON polygons & label markers
+      // Hide parcel GeoJSON polygons, pins & label markers
+      if (clusterGroupRef.current && map.hasLayer(clusterGroupRef.current)) {
+        map.removeLayer(clusterGroupRef.current)
+      }
       layersRef.current.forEach(({ layer, labelMarker }) => {
         if (map.hasLayer(layer)) {
           map.removeLayer(layer)
@@ -1526,12 +1534,19 @@ export default function MapPage() {
     )
   }
 
-  // ── Render Polygons ──────────────────────────────────────────────────
+  // ── Render Polygons & Clustered Pins ─────────────────────────────────
   useEffect(() => {
     const map = mapInstanceRef.current
     if (!map) return
 
-    // ALWAYS clean up prior layers from map first, even if plots is empty
+    // ALWAYS clean up prior layers & cluster group from map first, even if plots is empty
+    if (clusterGroupRef.current) {
+      if (map.hasLayer(clusterGroupRef.current)) {
+        map.removeLayer(clusterGroupRef.current)
+      }
+      clusterGroupRef.current.clearLayers()
+      clusterGroupRef.current = null
+    }
     layersRef.current.forEach(({ layer, labelMarker }) => {
       if (map.hasLayer(layer)) map.removeLayer(layer)
       if (labelMarker && map.hasLayer(labelMarker)) map.removeLayer(labelMarker)
@@ -1548,24 +1563,65 @@ export default function MapPage() {
       return true
     })
 
+    const clusterGroup = new MarkerClusterGroup({
+      chunkedLoading: true,
+      maxClusterRadius: 45,
+      showCoverageOnHover: false,
+      spiderfyOnMaxZoom: true,
+      zoomToBoundsOnClick: true,
+      disableClusteringAtZoom: 14,
+      iconCreateFunction: (cluster) => {
+        const count = cluster.getChildCount()
+        const sizeClass = count < 10 ? 'small' : count < 50 ? 'medium' : 'large'
+        return L.divIcon({
+          html: `<div class="parcel-cluster-badge parcel-cluster-${sizeClass}"><span>${count}</span></div>`,
+          className: 'parcel-cluster-wrapper',
+          iconSize: L.point(36, 36),
+        })
+      },
+    })
+
+    const pinIcon = L.divIcon({
+      className: 'parcel-pin-wrapper',
+      html: `<svg width="24" height="30" viewBox="0 0 24 30" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));">
+        <path d="M12 0C5.37258 0 0 5.37258 0 12C0 20.25 12 30 12 30C12 30 24 20.25 24 12C24 5.37258 18.6274 0 12 0Z" fill="#2563eb" stroke="#ffffff" stroke-width="2"/>
+        <circle cx="12" cy="11.5" r="4" fill="#ffffff"/>
+      </svg>`,
+      iconSize: [24, 30],
+      iconAnchor: [12, 30],
+    })
+
+    const pinMarkers = []
+
     plotsToRender.forEach(plot => {
       if (!plot.boundary_geojson) return
 
       const geoLayer = L.geoJSON(plot.boundary_geojson, {
         style: PARCEL_STYLE,
+        renderer: canvasRendererRef.current || undefined,
       })
       if (currentStep === 'READY') {
         geoLayer.addTo(map)
       }
 
-      // Note: Custom React popup will be bound on selection
-
-      // Compute center for label (centered on the polygon)
+      // Compute center for label & pin
       const bounds = geoLayer.getBounds()
-      const labelPosition = bounds.getCenter()
+      const centerPos = (plot.lat != null && plot.lon != null)
+        ? L.latLng(plot.lat, plot.lon)
+        : bounds.getCenter()
+
+      // Lightweight pin marker for zoomed-out / clustered view
+      const pinMarker = L.marker(centerPos, { icon: pinIcon })
+      const tooltipText = `${plot.plot_number || 'Parcel'}${plot.property_name ? ` — ${plot.property_name}` : ''}`
+      pinMarker.bindTooltip(tooltipText, { direction: 'top', offset: [0, -26] })
+      pinMarker.on('click', (e) => {
+        if (e) L.DomEvent.stopPropagation(e)
+        handleSelectPlot(plot, geoLayer, bounds)
+      })
+      pinMarkers.push(pinMarker)
 
       // Create a label marker (DivIcon) — toggled by zoom
-      const labelMarker = L.marker(labelPosition, {
+      const labelMarker = L.marker(bounds.getCenter(), {
         icon: L.divIcon({
           className: '',
           html: `<div class="parcel-label" data-plotid="${plot.id}">
@@ -1597,9 +1653,28 @@ export default function MapPage() {
       layersRef.current.push({ layer: geoLayer, labelMarker, plot })
     })
 
-    // Update labels on zoom
+    if (pinMarkers.length > 0) {
+      clusterGroup.addLayers(pinMarkers)
+    }
+    clusterGroupRef.current = clusterGroup
+
+    // Zoom-tiered visibility:
+    //   zoom < 14  -> show clustered parcel pins
+    //   zoom >= 14 -> hide pins & show parcel labels
     function updateLabels() {
       const zoom = map.getZoom()
+      const showClusterPins = currentStep === 'READY' && zoom < 14
+
+      if (clusterGroupRef.current) {
+        if (showClusterPins) {
+          if (!map.hasLayer(clusterGroupRef.current)) {
+            clusterGroupRef.current.addTo(map)
+          }
+        } else if (map.hasLayer(clusterGroupRef.current)) {
+          map.removeLayer(clusterGroupRef.current)
+        }
+      }
+
       layersRef.current.forEach(({ labelMarker, plot }) => {
         if (selectedPlotRef.current?.id === plot.id) {
           if (map.hasLayer(labelMarker)) map.removeLayer(labelMarker)
@@ -1624,6 +1699,13 @@ export default function MapPage() {
 
     return () => {
       map.off('zoomend', updateLabels)
+      if (clusterGroupRef.current) {
+        if (map.hasLayer(clusterGroupRef.current)) {
+          map.removeLayer(clusterGroupRef.current)
+        }
+        clusterGroupRef.current.clearLayers()
+        clusterGroupRef.current = null
+      }
     }
   }, [plots, currentStep])
 
@@ -3098,6 +3180,43 @@ export default function MapPage() {
           color: #fff;
           font-weight: bold;
           box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .parcel-cluster-wrapper {
+          background: transparent;
+          border: none;
+        }
+        .parcel-cluster-badge {
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+          color: #ffffff;
+          border: 2.5px solid #ffffff;
+          box-shadow: 0 3px 10px rgba(37, 99, 235, 0.45);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 700;
+          font-size: 13px;
+          transition: transform 0.15s ease;
+        }
+        .parcel-cluster-badge.parcel-cluster-medium {
+          width: 40px;
+          height: 40px;
+          font-size: 14px;
+        }
+        .parcel-cluster-badge.parcel-cluster-large {
+          width: 44px;
+          height: 44px;
+          background: linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%);
+          font-size: 14px;
+        }
+        .parcel-cluster-badge:hover {
+          transform: scale(1.08);
+        }
+        .parcel-pin-wrapper {
+          background: transparent;
+          border: none;
         }
       `}</style>
     </div>
