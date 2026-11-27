@@ -156,15 +156,24 @@ def main():
                 print(f"❌ KML file not found: {kml_path}")
                 continue
 
-            # Resolve target village node ID
+            # Resolve or create target village node ID
             target_node_id = district_id
             v_res = client.get(f"/geo/by-name/VILLAGE/{folder.name}")
             if v_res.status_code == 200:
                 target_node_id = v_res.json()["id"]
             else:
                 p_res = client.get(f"/geo/resolve-path?path=India/Tamil-Nadu/{args.district}/Coimbatore-South/{folder.name}")
-                if p_res.status_code == 200 and p_res.json().get("current_node"):
+                if p_res.status_code == 200 and p_res.json().get("current_node") and p_res.json()["current_node"]["level"] == "VILLAGE":
                     target_node_id = p_res.json()["current_node"]["id"]
+                else:
+                    # Auto-create the village under Coimbatore South taluk
+                    t_res = client.get(f"/geo/by-name/TALUK/Coimbatore-South", params={"parent_id": district_id})
+                    if t_res.status_code == 200:
+                        taluk_id = t_res.json()["id"]
+                        create_v = client.post("/geo/villages", json={"taluk_id": taluk_id, "name": folder.name}, headers=auth_headers)
+                        if create_v.status_code == 201:
+                            target_node_id = create_v.json()["id"]
+                            print(f"🏘️  Created village '{folder.name}' under Coimbatore South taluk.")
 
             # Build form fields
             form_data = {
