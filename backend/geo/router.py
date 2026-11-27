@@ -94,12 +94,43 @@ def get_plot_count(db: Session, node: GeoNode) -> int:
     return 0
 
 
+def _attach_plot_counts(db: Session, nodes: List[GeoNode]) -> None:
+    """Populate plot_count for a list of GeoNodes in 2 lightweight queries."""
+    if not nodes:
+        return
+    all_geo = db.query(GeoNode.id, GeoNode.parent_id).all()
+    children_map: dict[UUID, list[UUID]] = {}
+    for gid, pid in all_geo:
+        if pid is not None:
+            children_map.setdefault(pid, []).append(gid)
+
+    direct_counts = dict(
+        db.query(Plot.geo_node_id, func.count(Plot.id))
+        .filter(Plot.status == "ACTIVE")
+        .group_by(Plot.geo_node_id)
+        .all()
+    )
+
+    memo: dict[UUID, int] = {}
+
+    def count_subtree(node_id: UUID) -> int:
+        if node_id in memo:
+            return memo[node_id]
+        total = direct_counts.get(node_id, 0)
+        for child_id in children_map.get(node_id, ()):
+            total += count_subtree(child_id)
+        memo[node_id] = total
+        return total
+
+    for n in nodes:
+        n.plot_count = count_subtree(n.id)
+
+
 @router.get("/countries", response_model=List[GeoNodeOut])
 def list_countries(db: Session = Depends(get_db)):
     """List all top-level country GeoNodes."""
     nodes = db.query(GeoNode).filter(GeoNode.level == "COUNTRY").all()
-    for n in nodes:
-        n.plot_count = get_plot_count(db, n)
+    _attach_plot_counts(db, nodes)
     return nodes
 
 
@@ -114,8 +145,7 @@ def list_children(node_id: UUID, db: Session = Depends(get_db)):
         children.sort(key=lambda c: (0 if c.name == 'Tamil Nadu' else 1, c.name))
     elif node.level == 'STATE' and node.name == 'Tamil Nadu':
         children.sort(key=lambda c: (0 if c.name == 'Coimbatore' else 1, c.name))
-    for child in children:
-        child.plot_count = get_plot_count(db, child)
+    _attach_plot_counts(db, children)
     return children
 
 

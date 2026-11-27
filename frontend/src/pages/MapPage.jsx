@@ -14,6 +14,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { MarkerClusterGroup } from 'leaflet.markercluster'
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
 import markerIcon from 'leaflet/dist/images/marker-icon.png'
 import markerShadow from 'leaflet/dist/images/marker-shadow.png'
@@ -29,7 +31,7 @@ import { getPlots, getPlot, getPlotKmlUrl } from '../api/plots'
 import { getDocumentUrl } from '../api/documents'
 import { getNodeByName, getCountries, getChildren, getNode } from '../api/geo'
 import { geocodeAddress, getRoute, getNearbyPlaces } from '../api/routing'
-import { getDistrictCenter, getTalukCenter } from '../data/tnCoordinates'
+import { getCountryCenter, getStateCenter, getDistrictCenter, getTalukCenter } from '../data/tnCoordinates'
 import Header from '../components/Header'
 import { Search, ChevronDown, ChevronUp, X, FileText, Download, Eye, ChevronRight, MapPin, Navigation, ArrowLeftRight, Map as MapIcon, Clock, Car, Bike, Footprints, Pin, PinOff, Folder, FolderOpen, Ruler } from 'lucide-react'
 
@@ -188,6 +190,9 @@ export default function MapPage() {
   const labelsLayerRef = useRef(null)
   const satelliteGroupRef = useRef(null)
   const layersRef = useRef([]) // { layer, plot, labelMarker }
+  const clusterGroupRef = useRef(null)
+  const regionPinsLayerRef = useRef(null)
+  const canvasRendererRef = useRef(null)
   const selectedLayerRef = useRef(null)
   const selectedPlotRef = useRef(null)
 
@@ -201,7 +206,10 @@ export default function MapPage() {
   const [pinnedPos, setPinnedPos] = useState({ x: 0, y: 0, placement: 'top' })
   const [activeBasemap, setActiveBasemap] = useState('Satellite')
   const [isPinned, setIsPinned] = useState(false)
-  const [floatingPos, setFloatingPos] = useState({ x: 80, y: 120 })
+  const [floatingPos, setFloatingPos] = useState(() => ({
+    x: typeof window !== 'undefined' && window.innerWidth >= 840 ? 405 : 16,
+    y: typeof window !== 'undefined' && window.innerWidth >= 840 ? 84 : 300,
+  }))
   const [isDragging, setIsDragging] = useState(false)
   const dragRef = useRef({ startX: 0, startY: 0, initialLeft: 0, initialTop: 0 })
   const panelRef = useRef(null)
@@ -209,7 +217,10 @@ export default function MapPage() {
 
   // Selection flow states
   const [currentStep, setCurrentStep] = useState(districtId ? 'READY' : 'REGION')
-  const [isBlurOverlayVisible, setIsBlurOverlayVisible] = useState(!districtId)
+  const currentStepRef = useRef(currentStep)
+  const programmaticZoomUntilRef = useRef(0)
+  const [isBlurOverlayVisible, setIsBlurOverlayVisible] = useState(true)
+  const [isNavCardCollapsed, setIsNavCardCollapsed] = useState(false)
   const [selectedState, setSelectedState] = useState('Tamil Nadu')
   const [selectedDistrict, setSelectedDistrict] = useState('Coimbatore')
   const [selectedDistrictNode, setSelectedDistrictNode] = useState(null)
@@ -736,6 +747,7 @@ export default function MapPage() {
     }
 
     mapInstanceRef.current = map
+    canvasRendererRef.current = L.canvas({ padding: 0.5 })
 
     // Cleanup on unmount
     return () => {
@@ -751,13 +763,72 @@ export default function MapPage() {
     }
   }, [districtId])
 
+  const markProgrammaticZoom = (ms = 1400) => {
+    programmaticZoomUntilRef.current = Date.now() + ms
+  }
+
+  useEffect(() => {
+    currentStepRef.current = currentStep
+  }, [currentStep])
+
+  // ── Zoom-Out Hierarchy Sync ──────────────────────────────────────────
+  useEffect(() => {
+    const map = mapInstanceRef.current
+    if (!map) return
+
+    const handleZoomOutSync = () => {
+      if (Date.now() < programmaticZoomUntilRef.current) return
+      const step = currentStepRef.current
+      if (!step || step.startsWith('PANNING_')) return
+
+      const zoom = map.getZoom()
+      let nextStep = null
+
+      if (step === 'READY' || step === 'VILLAGE') {
+        if (zoom <= 4.2) nextStep = 'REGION'
+        else if (zoom <= 6.2) nextStep = 'STATE'
+        else if (zoom <= 8.5) nextStep = 'DISTRICT'
+        else if (zoom <= 11.5) nextStep = 'TALUK'
+      } else if (step === 'TALUK') {
+        if (zoom <= 4.2) nextStep = 'REGION'
+        else if (zoom <= 6.2) nextStep = 'STATE'
+        else if (zoom <= 8.5) nextStep = 'DISTRICT'
+      } else if (step === 'DISTRICT') {
+        if (zoom <= 4.2) nextStep = 'REGION'
+        else if (zoom <= 6.2) nextStep = 'STATE'
+      } else if (step === 'STATE') {
+        if (zoom <= 4.2) nextStep = 'REGION'
+      }
+
+      if (nextStep && nextStep !== step) {
+        if (step === 'READY' || step === 'VILLAGE') {
+          selectedPlotRef.current = null
+          setSelectedPlot(null)
+          setSelectedVillageNode(null)
+          setPlots([])
+          if (selectedLayerRef.current) {
+            selectedLayerRef.current.layer.setStyle(PARCEL_STYLE)
+            selectedLayerRef.current = null
+          }
+        }
+        setCurrentStep(nextStep)
+        setIsBlurOverlayVisible(true)
+      }
+    }
+
+    map.on('zoomend', handleZoomOutSync)
+    return () => {
+      map.off('zoomend', handleZoomOutSync)
+    }
+  }, [])
+
   // ── Dynamic Visibility of KML Parcels & Places/Labels Layer ─────────────
   useEffect(() => {
     const map = mapInstanceRef.current
     const labelsLayer = labelsLayerRef.current
     if (!map) return
 
-    if (currentStep === 'READY') {
+    if (currentStep === 'READY' || currentStep === 'VILLAGE') {
       // Show reference labels & boundaries ONLY on Satellite basemap
       if (activeBasemap === 'Satellite') {
         if (labelsLayer && !map.hasLayer(labelsLayer)) {
@@ -776,11 +847,14 @@ export default function MapPage() {
         }
       })
     } else {
-      // In selection flow (non-READY steps): hide reference labels & boundaries
+      // In upper selection steps: hide reference labels & parcel layers
       if (labelsLayer && map.hasLayer(labelsLayer)) {
         map.removeLayer(labelsLayer)
       }
-      // Hide parcel GeoJSON polygons & label markers
+      // Hide parcel GeoJSON polygons, pins & label markers
+      if (clusterGroupRef.current && map.hasLayer(clusterGroupRef.current)) {
+        map.removeLayer(clusterGroupRef.current)
+      }
       layersRef.current.forEach(({ layer, labelMarker }) => {
         if (map.hasLayer(layer)) {
           map.removeLayer(layer)
@@ -791,6 +865,79 @@ export default function MapPage() {
       })
     }
   }, [currentStep, plots, activeBasemap])
+
+  // ── Hierarchical Region Pins (Country / State / District / Taluk) ─────
+  useEffect(() => {
+    const map = mapInstanceRef.current
+    if (!map) return
+
+    if (regionPinsLayerRef.current) {
+      map.removeLayer(regionPinsLayerRef.current)
+      regionPinsLayerRef.current = null
+    }
+
+    const addRegionPin = (group, name, count, coords, onClick) => {
+      if (!coords) return
+      const marker = L.marker(coords.center, {
+        icon: L.divIcon({
+          className: 'region-pin-wrapper',
+          html: `<div class="region-pin-badge" title="${name} (${count} parcel${count === 1 ? '' : 's'})">
+                   <span class="region-pin-name">${name}</span>
+                   <span class="region-pin-count">${count}</span>
+                 </div>`,
+          iconSize: null,
+          iconAnchor: [0, 0],
+        }),
+      })
+      marker.on('click', (e) => {
+        if (e) L.DomEvent.stopPropagation(e)
+        onClick()
+      })
+      group.addLayer(marker)
+    }
+
+    const group = L.layerGroup()
+
+    if (currentStep === 'REGION') {
+      countries.filter(c => c.plot_count > 0).forEach(c => {
+        const coords = getCountryCenter(c.name)
+        addRegionPin(group, c.name, c.plot_count, coords, () => {
+          if (c.name === 'India') {
+            handleSelectIndia()
+          } else {
+            setActiveDistrictId(c.id)
+          }
+        })
+      })
+    } else if (currentStep === 'STATE') {
+      states.filter(s => s.plot_count > 0).forEach(s => {
+        const coords = getStateCenter(s.name)
+        addRegionPin(group, s.name, s.plot_count, coords, () => handleSelectState(s.name))
+      })
+    } else if (currentStep === 'DISTRICT') {
+      districts.filter(d => d.plot_count > 0).forEach(d => {
+        const coords = getDistrictCenter(d.name)
+        addRegionPin(group, d.name, d.plot_count, coords, () => handleSelectDistrict(d.name))
+      })
+    } else if (currentStep === 'TALUK') {
+      taluksList.filter(t => t.plot_count > 0).forEach(t => {
+        const coords = getTalukCenter(selectedDistrict, t.name)
+        addRegionPin(group, t.name, t.plot_count, coords, () => handleSelectTaluk(t.name))
+      })
+    }
+
+    if (group.getLayers().length > 0) {
+      group.addTo(map)
+      regionPinsLayerRef.current = group
+    }
+
+    return () => {
+      if (regionPinsLayerRef.current && map.hasLayer(regionPinsLayerRef.current)) {
+        map.removeLayer(regionPinsLayerRef.current)
+        regionPinsLayerRef.current = null
+      }
+    }
+  }, [currentStep, countries, states, districts, taluksList, selectedDistrict])
 
 
   // ── Plot Selection ─────────────────────────────────────────────────────
@@ -1114,6 +1261,7 @@ export default function MapPage() {
     setCurrentStep('PANNING_INDIA')
     const map = mapInstanceRef.current
     if (map) {
+      markProgrammaticZoom(1300)
       map.flyTo(INDIA_VIEW.center, INDIA_VIEW.zoom, { duration: 1.0, easeLinearity: 0.25 })
       const startTime = Date.now()
       let finished = false
@@ -1155,6 +1303,7 @@ export default function MapPage() {
 
     const map = mapInstanceRef.current
     if (map) {
+      markProgrammaticZoom(1300)
       map.flyTo(targetView.center, targetView.zoom, { duration: 1.0, easeLinearity: 0.25 })
     }
 
@@ -1208,6 +1357,7 @@ export default function MapPage() {
       )
     }
     if (map && targetCoords) {
+      markProgrammaticZoom(1300)
       map.flyTo(targetCoords.center, targetCoords.zoom, { duration: 1.0, easeLinearity: 0.25 })
     }
 
@@ -1292,29 +1442,36 @@ export default function MapPage() {
       )
     }
     if (map && coords) {
+      markProgrammaticZoom(1300)
       map.flyTo(coords.center, coords.zoom, { duration: 1.0, easeLinearity: 0.25 })
     }
 
-    // Fetch villages for this taluk
+    // Fetch villages and all plots in this taluk (so individual plot pins show immediately)
     try {
       if (talukObj.id && typeof talukObj.id === 'string' && talukObj.id.includes('-')) {
-        const vList = await getChildren(talukObj.id).catch(() => [])
+        const [vList, tPlots] = await Promise.all([
+          getChildren(talukObj.id).catch(() => []),
+          getPlots(talukObj.id).catch(() => []),
+        ])
         setVillagesList(vList)
+        setPlots(tPlots)
         if (vList.length > 0) {
-          setSelectedVillage(vList[0].name)
-          setSelectedVillageNode(vList[0])
+          setSelectedVillage('__ALL__')
+          setSelectedVillageNode(null)
         } else {
           setSelectedVillage('')
           setSelectedVillageNode(null)
         }
       } else {
         setVillagesList([])
+        setPlots([])
         setSelectedVillage('')
         setSelectedVillageNode(null)
       }
     } catch (e) {
-      console.error('Error fetching villages for taluk:', e)
+      console.error('Error fetching villages/plots for taluk:', e)
       setVillagesList([])
+      setPlots([])
       setSelectedVillage('')
       setSelectedVillageNode(null)
     }
@@ -1348,9 +1505,12 @@ export default function MapPage() {
   }
 
   async function handleSelectVillage(villageName) {
-    const targetName = villageName || selectedVillage
-    const vObj = villagesList.find(v => v.name === targetName || v.id === targetName) || selectedVillageNode
-    setSelectedVillage(targetName)
+    const targetName = villageName !== undefined ? villageName : selectedVillage
+    const isAllTaluk = !targetName || targetName === '__ALL__'
+    const vObj = isAllTaluk
+      ? null
+      : (villagesList.find(v => v.name === targetName || v.id === targetName) || selectedVillageNode)
+    setSelectedVillage(isAllTaluk ? '' : (vObj?.name || targetName))
     setSelectedVillageNode(vObj)
 
     setIsBlurOverlayVisible(false)
@@ -1368,21 +1528,24 @@ export default function MapPage() {
 
         const map = mapInstanceRef.current
         if (map && villagePlots.length > 0) {
+          markProgrammaticZoom(1300)
           const pts = villagePlots.filter(p => p.lat != null && p.lon != null).map(p => [p.lat, p.lon])
           if (pts.length === 1) {
             map.flyTo(pts[0], 16, { duration: 1.0, easeLinearity: 0.25 })
           } else if (pts.length > 1) {
             map.flyToBounds(L.latLngBounds(pts), { padding: [80, 80], maxZoom: 16, duration: 1.0 })
           }
-        } else if (map && VILLAGE_COORDS[targetName]) {
+        } else if (map && !isAllTaluk && VILLAGE_COORDS[targetName]) {
+          markProgrammaticZoom(1300)
           map.flyTo(VILLAGE_COORDS[targetName].center, VILLAGE_COORDS[targetName].zoom, { duration: 1.0, easeLinearity: 0.25 })
-        } else if (map && targetName) {
+        } else if (map && !isAllTaluk && targetName) {
           const fallbackTaluk = getTalukCenter(selectedDistrict, selectedTaluk)
           const geoView = await resolveGeocodeFallback(
             `${targetName}, ${selectedTaluk}, ${selectedDistrict}, ${selectedState || 'Tamil Nadu'}`,
             fallbackTaluk ? { center: fallbackTaluk.center, zoom: 14 } : null
           )
           if (geoView) {
+            markProgrammaticZoom(1300)
             map.flyTo(geoView.center, 14.5, { duration: 1.0, easeLinearity: 0.25 })
           }
         }
@@ -1395,6 +1558,7 @@ export default function MapPage() {
 
     const timer = setTimeout(() => {
       setCurrentStep('READY')
+      setIsBlurOverlayVisible(true)
       const map = mapInstanceRef.current
       if (map) map.invalidateSize()
     }, 1050)
@@ -1403,6 +1567,7 @@ export default function MapPage() {
       map.once('moveend', () => {
         clearTimeout(timer)
         setCurrentStep('READY')
+        setIsBlurOverlayVisible(true)
         map.invalidateSize()
       })
     }
@@ -1418,11 +1583,16 @@ export default function MapPage() {
 
     if (currentStep === 'READY') {
       setSelectedPlot(null)
+      setSelectedVillageNode(null)
+      setSelectedVillage('__ALL__')
       setCurrentStep('VILLAGE')
       setIsBlurOverlayVisible(true)
-      setPlots([])
+      if (selectedTalukNode?.id && typeof selectedTalukNode.id === 'string' && selectedTalukNode.id.includes('-')) {
+        getPlots(selectedTalukNode.id).then(setPlots).catch(() => {})
+      }
       const tCoords = getTalukCenter(selectedDistrict, selectedTaluk) || getDistrictCenter(selectedDistrict)
       if (map && tCoords) {
+        markProgrammaticZoom(1300)
         map.flyTo(tCoords.center, tCoords.zoom, { duration: 1.0 })
       }
       return
@@ -1434,6 +1604,7 @@ export default function MapPage() {
       setPlots([])
       const dCoords = getDistrictCenter(selectedDistrict) || { center: CBE_BOUNDS.getCenter(), zoom: 10.5 }
       if (map) {
+        markProgrammaticZoom(1300)
         map.flyTo(dCoords.center, dCoords.zoom, { duration: 1.0 })
       }
       return
@@ -1443,6 +1614,7 @@ export default function MapPage() {
       setCurrentStep('DISTRICT')
       setIsBlurOverlayVisible(true)
       if (map) {
+        markProgrammaticZoom(1300)
         map.flyTo(TN_VIEW.center, TN_VIEW.zoom, { duration: 1.0 })
       }
       return
@@ -1452,6 +1624,7 @@ export default function MapPage() {
       setCurrentStep('STATE')
       setIsBlurOverlayVisible(true)
       if (map) {
+        markProgrammaticZoom(1300)
         map.flyTo(INDIA_VIEW.center, INDIA_VIEW.zoom, { duration: 1.0 })
       }
       return
@@ -1461,6 +1634,7 @@ export default function MapPage() {
       setCurrentStep('REGION')
       setIsBlurOverlayVisible(true)
       if (map) {
+        markProgrammaticZoom(1300)
         map.flyTo(WORLD_VIEW.center, WORLD_VIEW.zoom, { duration: 1.0 })
       }
       return
@@ -1526,12 +1700,19 @@ export default function MapPage() {
     )
   }
 
-  // ── Render Polygons ──────────────────────────────────────────────────
+  // ── Render Polygons & Clustered Pins ─────────────────────────────────
   useEffect(() => {
     const map = mapInstanceRef.current
     if (!map) return
 
-    // ALWAYS clean up prior layers from map first, even if plots is empty
+    // ALWAYS clean up prior layers & cluster group from map first, even if plots is empty
+    if (clusterGroupRef.current) {
+      if (map.hasLayer(clusterGroupRef.current)) {
+        map.removeLayer(clusterGroupRef.current)
+      }
+      clusterGroupRef.current.clearLayers()
+      clusterGroupRef.current = null
+    }
     layersRef.current.forEach(({ layer, labelMarker }) => {
       if (map.hasLayer(layer)) map.removeLayer(layer)
       if (labelMarker && map.hasLayer(labelMarker)) map.removeLayer(labelMarker)
@@ -1540,7 +1721,8 @@ export default function MapPage() {
 
     if (plots.length === 0) return
 
-    // Strictly display only plots of the currently selected town/village
+    // Strictly display only plots of the currently selected town/village (or entire taluk if All Villages)
+    const isPlotView = currentStep === 'READY' || currentStep === 'VILLAGE'
     const plotsToRender = plots.filter(plot => {
       if (selectedVillageNode?.id && plot.geo_node_id) {
         return plot.geo_node_id === selectedVillageNode.id
@@ -1548,24 +1730,65 @@ export default function MapPage() {
       return true
     })
 
+    const clusterGroup = new MarkerClusterGroup({
+      chunkedLoading: true,
+      maxClusterRadius: 45,
+      showCoverageOnHover: false,
+      spiderfyOnMaxZoom: true,
+      zoomToBoundsOnClick: true,
+      disableClusteringAtZoom: 14,
+      iconCreateFunction: (cluster) => {
+        const count = cluster.getChildCount()
+        const sizeClass = count < 10 ? 'small' : count < 50 ? 'medium' : 'large'
+        return L.divIcon({
+          html: `<div class="parcel-cluster-badge parcel-cluster-${sizeClass}"><span>${count}</span></div>`,
+          className: 'parcel-cluster-wrapper',
+          iconSize: L.point(36, 36),
+        })
+      },
+    })
+
+    const pinIcon = L.divIcon({
+      className: 'parcel-pin-wrapper',
+      html: `<svg width="24" height="30" viewBox="0 0 24 30" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));">
+        <path d="M12 0C5.37258 0 0 5.37258 0 12C0 20.25 12 30 12 30C12 30 24 20.25 24 12C24 5.37258 18.6274 0 12 0Z" fill="#2563eb" stroke="#ffffff" stroke-width="2"/>
+        <circle cx="12" cy="11.5" r="4" fill="#ffffff"/>
+      </svg>`,
+      iconSize: [24, 30],
+      iconAnchor: [12, 30],
+    })
+
+    const pinMarkers = []
+
     plotsToRender.forEach(plot => {
       if (!plot.boundary_geojson) return
 
       const geoLayer = L.geoJSON(plot.boundary_geojson, {
         style: PARCEL_STYLE,
+        renderer: canvasRendererRef.current || undefined,
       })
-      if (currentStep === 'READY') {
+      if (isPlotView) {
         geoLayer.addTo(map)
       }
 
-      // Note: Custom React popup will be bound on selection
-
-      // Compute center for label (centered on the polygon)
+      // Compute center for label & pin
       const bounds = geoLayer.getBounds()
-      const labelPosition = bounds.getCenter()
+      const centerPos = (plot.lat != null && plot.lon != null)
+        ? L.latLng(plot.lat, plot.lon)
+        : bounds.getCenter()
+
+      // Lightweight pin marker for zoomed-out / clustered view
+      const pinMarker = L.marker(centerPos, { icon: pinIcon })
+      const tooltipText = `${plot.plot_number || 'Parcel'}${plot.property_name ? ` — ${plot.property_name}` : ''}`
+      pinMarker.bindTooltip(tooltipText, { direction: 'top', offset: [0, -26] })
+      pinMarker.on('click', (e) => {
+        if (e) L.DomEvent.stopPropagation(e)
+        handleSelectPlot(plot, geoLayer, bounds)
+      })
+      pinMarkers.push(pinMarker)
 
       // Create a label marker (DivIcon) — toggled by zoom
-      const labelMarker = L.marker(labelPosition, {
+      const labelMarker = L.marker(bounds.getCenter(), {
         icon: L.divIcon({
           className: '',
           html: `<div class="parcel-label" data-plotid="${plot.id}">
@@ -1597,15 +1820,34 @@ export default function MapPage() {
       layersRef.current.push({ layer: geoLayer, labelMarker, plot })
     })
 
-    // Update labels on zoom
+    if (pinMarkers.length > 0) {
+      clusterGroup.addLayers(pinMarkers)
+    }
+    clusterGroupRef.current = clusterGroup
+
+    // Zoom-tiered visibility:
+    //   zoom < 14  -> show clustered parcel pins
+    //   zoom >= 14 -> hide pins & show parcel labels
     function updateLabels() {
       const zoom = map.getZoom()
+      const showClusterPins = isPlotView && zoom < 14
+
+      if (clusterGroupRef.current) {
+        if (showClusterPins) {
+          if (!map.hasLayer(clusterGroupRef.current)) {
+            clusterGroupRef.current.addTo(map)
+          }
+        } else if (map.hasLayer(clusterGroupRef.current)) {
+          map.removeLayer(clusterGroupRef.current)
+        }
+      }
+
       layersRef.current.forEach(({ labelMarker, plot }) => {
         if (selectedPlotRef.current?.id === plot.id) {
           if (map.hasLayer(labelMarker)) map.removeLayer(labelMarker)
           return
         }
-        if (currentStep === 'READY' && zoom >= 14) {
+        if (isPlotView && zoom >= 14) {
           if (!map.hasLayer(labelMarker)) labelMarker.addTo(map)
           // Show/hide name part
           const el = labelMarker.getElement()
@@ -1624,6 +1866,13 @@ export default function MapPage() {
 
     return () => {
       map.off('zoomend', updateLabels)
+      if (clusterGroupRef.current) {
+        if (map.hasLayer(clusterGroupRef.current)) {
+          map.removeLayer(clusterGroupRef.current)
+        }
+        clusterGroupRef.current.clearLayers()
+        clusterGroupRef.current = null
+      }
     }
   }, [plots, currentStep])
 
@@ -1635,6 +1884,10 @@ export default function MapPage() {
 
   async function handleSelectPlot(plot, geoLayer, bounds) {
     selectedPlotRef.current = plot
+    if (currentStep !== 'READY') {
+      setCurrentStep('READY')
+      setIsBlurOverlayVisible(true)
+    }
 
     // Hide tiny center label for this plot while modal is open
     const currentItem = layersRef.current.find(l => l.plot.id === plot.id)
@@ -1652,14 +1905,19 @@ export default function MapPage() {
 
     setSelectedPlot(plot)
     setIsPinned(false)
-    setFloatingPos(prev => ({
-      x: Math.max(10, Math.min(window.innerWidth - 390, prev.x)),
-      y: Math.max(70, Math.min(window.innerHeight - 100, prev.y))
-    }))
+    setFloatingPos(prev => {
+      const defaultX = window.innerWidth >= 840 ? 405 : 16
+      const defaultY = window.innerWidth >= 840 ? 84 : 300
+      return {
+        x: Math.max(10, Math.min(window.innerWidth - 390, prev.x || defaultX)),
+        y: Math.max(70, Math.min(window.innerHeight - 100, prev.y || defaultY)),
+      }
+    })
     setAddressViewMode('db')
 
     const map = mapInstanceRef.current
     if (map) {
+      markProgrammaticZoom(1500)
       if (flyToSafetyTimerRef.current) {
         clearTimeout(flyToSafetyTimerRef.current)
         flyToSafetyTimerRef.current = null
@@ -2833,9 +3091,9 @@ export default function MapPage() {
           </div>
         )}
 
-        {/* Selection Flow Modal Overlay */}
+        {/* Top-Left Non-Blocking Selection Card (no map blur) */}
         {isBlurOverlayVisible && (
-          <div className="map-backdrop-overlay">
+          <div className="map-floating-nav-container">
             {currentStep === 'REGION' && (
               <div className="map-selection-card">
                 <div className="map-selection-header">
@@ -2987,46 +3245,94 @@ export default function MapPage() {
               </div>
             )}
 
-            {currentStep === 'VILLAGE' && (
+            {(currentStep === 'VILLAGE' || currentStep === 'READY') && (
               <div className="map-selection-card">
-                <div className="map-selection-header">
-                  <div className="map-selection-icon">
-                    <img src="/tamil-nadu.png" alt="Town / Village" />
-                  </div>
-                  <h2 className="map-selection-title">Select Town / Village</h2>
-                  <p className="map-selection-subtitle">{selectedTaluk || 'Taluk'} • Choose town / village to view land parcels</p>
-                </div>
-                <div className="selection-dropdown-wrapper">
-                  <label className="form-label" style={{ marginBottom: '0.5rem', fontWeight: '600' }}>Town / Village</label>
-                  {villagesList.length === 0 ? (
-                    <p style={{ color: 'var(--color-text-muted)', margin: '0.5rem 0' }}>No towns / villages registered in this taluk.</p>
-                  ) : (
-                    <select
-                      className="selection-select"
-                      value={selectedVillage}
-                      onChange={e => {
-                        const val = e.target.value
-                        setSelectedVillage(val)
-                        const found = villagesList.find(v => v.name === val || v.id === val)
-                        if (found) setSelectedVillageNode(found)
-                      }}
-                    >
-                      {villagesList.map(v => (
-                        <option key={v.id || v.name} value={v.name}>{v.name}</option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isNavCardCollapsed ? 0 : '0.75rem' }}>
                   <button
-                    className="btn btn-primary"
-                    style={{ width: '100%', justifyContent: 'center', padding: '0.85rem', fontWeight: '600' }}
-                    onClick={() => handleSelectVillage()}
-                    disabled={villagesList.length === 0 && !selectedVillage}
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => {
+                      const map = mapInstanceRef.current
+                      setSelectedPlot(null)
+                      setSelectedVillageNode(null)
+                      setPlots([])
+                      setCurrentStep('TALUK')
+                      setIsBlurOverlayVisible(true)
+                      const dCoords = getDistrictCenter(selectedDistrict) || { center: CBE_BOUNDS.getCenter(), zoom: 10.5 }
+                      if (map) {
+                        markProgrammaticZoom(1300)
+                        map.flyTo(dCoords.center, dCoords.zoom, { duration: 1.0 })
+                      }
+                    }}
+                    style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
+                    title="Back to Taluk selection"
                   >
-                    Explore Town / Village Parcels →
+                    ← Taluk
+                  </button>
+                  <span style={{ fontSize: '0.78rem', fontWeight: '700', color: 'var(--color-text-muted)' }}>
+                    {selectedTaluk || 'Navigation'}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => setIsNavCardCollapsed(c => !c)}
+                    style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
+                    title={isNavCardCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+                  >
+                    {isNavCardCollapsed ? '+' : '−'}
                   </button>
                 </div>
+
+                {!isNavCardCollapsed && (
+                  <>
+                    <div className="map-selection-header">
+                      <div className="map-selection-icon">
+                        <img src="/tamil-nadu.png" alt="Town / Village" />
+                      </div>
+                      <h2 className="map-selection-title">Explore Parcels</h2>
+                      <p className="map-selection-subtitle">{selectedTaluk || 'Taluk'} • Switch town / village or view all taluk parcels</p>
+                    </div>
+                    <div className="selection-dropdown-wrapper">
+                      <label className="form-label" style={{ marginBottom: '0.5rem', fontWeight: '600' }}>Town / Village</label>
+                      {villagesList.length === 0 ? (
+                        <p style={{ color: 'var(--color-text-muted)', margin: '0.5rem 0' }}>No towns / villages registered in this taluk.</p>
+                      ) : (
+                        <select
+                          className="selection-select"
+                          value={selectedVillage || '__ALL__'}
+                          onChange={e => {
+                            const val = e.target.value
+                            setSelectedVillage(val)
+                            if (val === '__ALL__') {
+                              setSelectedVillageNode(null)
+                            } else {
+                              const found = villagesList.find(v => v.name === val || v.id === val)
+                              if (found) setSelectedVillageNode(found)
+                            }
+                            if (currentStep === 'READY') {
+                              handleSelectVillage(val)
+                            }
+                          }}
+                        >
+                          <option value="__ALL__">All Villages in {selectedTaluk} ({plots.length})</option>
+                          {villagesList.map(v => (
+                            <option key={v.id || v.name} value={v.name}>{v.name} ({v.plot_count || 0})</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.25rem' }}>
+                      <button
+                        className="btn btn-primary"
+                        style={{ width: '100%', justifyContent: 'center', padding: '0.85rem', fontWeight: '600' }}
+                        onClick={() => handleSelectVillage()}
+                        disabled={villagesList.length === 0 && plots.length === 0}
+                      >
+                        {selectedVillage === '__ALL__' || !selectedVillage ? 'Explore All Taluk Parcels →' : 'Explore Town / Village Parcels →'}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -3098,6 +3404,87 @@ export default function MapPage() {
           color: #fff;
           font-weight: bold;
           box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .parcel-cluster-wrapper {
+          background: transparent;
+          border: none;
+        }
+        .parcel-cluster-badge {
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+          color: #ffffff;
+          border: 2.5px solid #ffffff;
+          box-shadow: 0 3px 10px rgba(37, 99, 235, 0.45);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 700;
+          font-size: 13px;
+          transition: transform 0.15s ease;
+        }
+        .parcel-cluster-badge.parcel-cluster-medium {
+          width: 40px;
+          height: 40px;
+          font-size: 14px;
+        }
+        .parcel-cluster-badge.parcel-cluster-large {
+          width: 44px;
+          height: 44px;
+          background: linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%);
+          font-size: 14px;
+        }
+        .parcel-cluster-badge:hover {
+          transform: scale(1.08);
+        }
+        .parcel-pin-wrapper {
+          background: transparent;
+          border: none;
+        }
+        .region-pin-wrapper {
+          background: transparent;
+          border: none;
+        }
+        .region-pin-badge {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 5px 10px;
+          background: rgba(255, 255, 255, 0.96);
+          border: 2px solid #2563eb;
+          border-radius: 999px;
+          box-shadow: 0 4px 12px rgba(15, 23, 42, 0.3);
+          color: #0f172a;
+          font-size: 12px;
+          font-weight: 700;
+          white-space: nowrap;
+          transform: translate(-50%, -100%);
+          cursor: pointer;
+          transition: transform 0.15s ease, background 0.15s ease;
+        }
+        .region-pin-badge::after {
+          content: '';
+          position: absolute;
+          left: 50%;
+          bottom: -7px;
+          transform: translateX(-50%);
+          border-left: 6px solid transparent;
+          border-right: 6px solid transparent;
+          border-top: 7px solid #2563eb;
+        }
+        .region-pin-badge:hover {
+          transform: translate(-50%, -104%) scale(1.05);
+          background: #eff6ff;
+        }
+        .region-pin-count {
+          background: #2563eb;
+          color: #ffffff;
+          border-radius: 999px;
+          padding: 1px 7px;
+          font-size: 11px;
+          font-weight: 700;
         }
       `}</style>
     </div>
