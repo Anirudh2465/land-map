@@ -310,6 +310,46 @@ input, select, textarea { font: inherit; }
   padding: 1rem;
 }
 
+.map-floating-nav-container {
+  position: absolute;
+  top: 1rem;
+  left: 4.25rem;
+  z-index: 1000;
+  width: 320px;
+  max-width: calc(100vw - 5.25rem);
+  pointer-events: auto;
+}
+
+.map-floating-nav-container .map-selection-card {
+  max-width: 100%;
+  padding: 1.25rem;
+  box-shadow: 0 12px 32px -8px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(15, 23, 42, 0.06);
+}
+
+.map-floating-nav-container .map-selection-header {
+  margin-bottom: 1rem;
+}
+
+.map-floating-nav-container .map-selection-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  margin-bottom: 0.55rem;
+}
+
+.map-floating-nav-container .map-selection-icon img {
+  width: 30px;
+  height: 30px;
+}
+
+.map-floating-nav-container .map-selection-title {
+  font-size: 1.05rem;
+}
+
+.map-floating-nav-container .map-selection-subtitle {
+  font-size: 0.8rem;
+}
+
 .map-selection-card {
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(16px);

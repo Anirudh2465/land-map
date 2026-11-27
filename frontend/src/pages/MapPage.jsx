@@ -2915,9 +2915,9 @@ export default function MapPage() {
           </div>
         )}
 
-        {/* Selection Flow Modal Overlay */}
+        {/* Top-Left Non-Blocking Selection Card (no map blur) */}
         {isBlurOverlayVisible && (
-          <div className="map-backdrop-overlay">
+          <div className="map-floating-nav-container">
             {currentStep === 'REGION' && (
               <div className="map-selection-card">
                 <div className="map-selection-header">
