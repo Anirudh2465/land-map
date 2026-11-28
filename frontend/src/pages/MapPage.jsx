@@ -1296,9 +1296,11 @@ export default function MapPage() {
     setIsBlurOverlayVisible(false)
     setCurrentStep('PANNING_TN')
 
-    let targetView = TN_VIEW
-    if (targetState !== 'Tamil Nadu') {
-      targetView = await resolveGeocodeFallback(`${targetState}, India`, { center: INDIA_VIEW.center, zoom: 7 })
+    let targetView = getStateCenter(targetState)
+    if (!targetView) {
+      targetView = targetState === 'Tamil Nadu'
+        ? TN_VIEW
+        : await resolveGeocodeFallback(`${targetState}, India`, { center: INDIA_VIEW.center, zoom: 7 })
     }
 
     const map = mapInstanceRef.current
@@ -1613,9 +1615,10 @@ export default function MapPage() {
     if (currentStep === 'TALUK') {
       setCurrentStep('DISTRICT')
       setIsBlurOverlayVisible(true)
+      const stateView = getStateCenter(selectedState) || TN_VIEW
       if (map) {
         markProgrammaticZoom(1300)
-        map.flyTo(TN_VIEW.center, TN_VIEW.zoom, { duration: 1.0 })
+        map.flyTo(stateView.center, stateView.zoom, { duration: 1.0 })
       }
       return
     }
